@@ -30,6 +30,17 @@ This repo uses Supabase MCP project setup instead of `supabase login` / `supabas
    - `SUPABASE_SERVICE_ROLE_KEY`
 4. Update `supabase/config.toml` `project_id` with your project ref.
 
+### Environment Variable Safety
+
+- `NEXT_PUBLIC_*` variables are exposed to the browser bundle.
+- `SUPABASE_SERVICE_ROLE_KEY` is a secret and must only be used in trusted server code (never client components, never browser).
+
+### Production Hosting
+
+- Do not use `.env.local` in hosted environments. Configure environment variables in your hosting platform (for example Vercel project settings).
+- Client-side app access should use only `NEXT_PUBLIC_SUPABASE_URL` + publishable/anon key and rely on RLS + authenticated user JWT.
+- Use `SUPABASE_SERVICE_ROLE_KEY` only for privileged server-side jobs (for example admin bootstrap, secure maintenance scripts, or protected server routes/functions).
+
 ## Baseline Commands
 
 ```bash
