@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { formatUtcTimestamp } from "@/lib/datetime/format-utc-timestamp";
+
 import { UploadForm } from "./UploadForm";
 
 type StoredComponent = {
@@ -36,14 +38,6 @@ type ComponentsManagerProps = {
   listLimit: number;
 };
 
-function formatTimestamp(value: string): string {
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return value;
-  }
-  return parsed.toLocaleString();
-}
-
 export function ComponentsManager({ initialComponents, listLimit }: ComponentsManagerProps) {
   const [components, setComponents] = useState<StoredComponent[]>(initialComponents);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -57,7 +51,7 @@ export function ComponentsManager({ initialComponents, listLimit }: ComponentsMa
     () =>
       components.map((component) => ({
         ...component,
-        createdAtLabel: formatTimestamp(component.created_at),
+        createdAtLabel: formatUtcTimestamp(component.created_at),
       })),
     [components],
   );

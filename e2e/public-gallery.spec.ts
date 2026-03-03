@@ -114,7 +114,7 @@ test("download endpoint returns redirect and applies rate limit", async ({ reque
   expect(body.error?.code).toBe("download_rate_limited");
 });
 
-test("sandbox button opens Phase 4 stub route", async ({ page }) => {
+test("sandbox button opens live Phase 4 sandbox route", async ({ page }) => {
   if (!fixtures) {
     return;
   }
@@ -123,5 +123,5 @@ test("sandbox button opens Phase 4 stub route", async ({ page }) => {
   await page.getByRole("link", { name: "Edit/Preview" }).first().click();
 
   await expect(page).toHaveURL(/\/components\/.*\/sandbox/);
-  await expect(page.getByRole("heading", { name: /live sandbox coming soon/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Liquid Sandbox" })).toBeVisible();
 });

@@ -29,6 +29,7 @@ export function PublicComponentCard({ component, thumbnailLoading = "lazy" }: Pu
     <article
       data-testid="public-component-card"
       className="rounded-2xl border border-zinc-200 bg-white p-3 shadow-sm"
+      style={{ contain: "layout paint style" }}
     >
       <ThumbnailMedia
         alt={`${component.title} thumbnail`}

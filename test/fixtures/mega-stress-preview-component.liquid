@@ -1,0 +1,523 @@
+{% assign heading_tag = section.settings.heading_tag | default: 'h2' %}
+{% assign layout_density = section.settings.layout_density | default: 'comfortable' %}
+{% assign media_ratio = section.settings.media_ratio | default: '16-9' %}
+{% assign marquee_items = section.settings.marquee_items | split: '|' %}
+{% assign heading_font_family = section.settings.heading_font.family | default: 'inherit' %}
+{% assign columns_desktop = section.settings.columns_desktop | default: 3 %}
+{% assign columns_mobile = section.settings.columns_mobile | default: 1 %}
+{% assign border_style = section.settings.border_style | default: 'thin' %}
+{% assign card_shadow = section.settings.card_shadow | default: 'subtle' %}
+{% assign section_id = section.id | default: 'mega-stress-preview' %}
+
+<section
+  id="pp-mega-stress-{{ section_id }}"
+  class="pp-mega-stress pp-density-{{ layout_density }} pp-ratio-{{ media_ratio }} pp-border-{{ border_style }} pp-shadow-{{ card_shadow }} color-{{ section.settings.scheme }}"
+  style="
+    --pp-bg: {{ section.settings.background_color | default: '#f8f8f6' }};
+    --pp-text: {{ section.settings.text_color | default: '#171717' }};
+    --pp-accent: {{ section.settings.accent_color | default: '#ef4444' }};
+    --pp-heading-size: {{ section.settings.heading_size | default: 48 }}px;
+    --pp-body-size: {{ section.settings.body_size | default: 16 }}px;
+    --pp-overlay: {{ section.settings.overlay_opacity | default: 30 | divided_by: 100.0 }};
+    --pp-columns-desktop: {{ columns_desktop }};
+    --pp-columns-mobile: {{ columns_mobile }};
+    --pp-padding-top: {{ section.settings.section_padding_top | default: 56 }}px;
+    --pp-padding-bottom: {{ section.settings.section_padding_bottom | default: 56 }}px;
+    --pp-heading-font: {{ heading_font_family }};
+  "
+>
+  <style>
+    #pp-mega-stress-{{ section_id }} {
+      background: var(--pp-bg);
+      color: var(--pp-text);
+      padding-top: var(--pp-padding-top);
+      padding-bottom: var(--pp-padding-bottom);
+      font-size: var(--pp-body-size);
+      line-height: 1.5;
+    }
+    #pp-mega-stress-{{ section_id }} .pp-shell {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 20px;
+      display: grid;
+      gap: 22px;
+    }
+    #pp-mega-stress-{{ section_id }} .pp-heading {
+      font-size: var(--pp-heading-size);
+      line-height: 0.94;
+      margin: 0;
+      font-family: var(--pp-heading-font);
+      text-wrap: balance;
+      text-align: {{ section.settings.heading_alignment | default: 'left' }};
+    }
+    #pp-mega-stress-{{ section_id }} .pp-subheading {
+      font-size: calc(var(--pp-body-size) * 1.2);
+      opacity: 0.9;
+      margin: 0;
+      text-align: {{ section.settings.heading_alignment | default: 'left' }};
+    }
+    #pp-mega-stress-{{ section_id }} .pp-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border: 1px solid currentColor;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      width: fit-content;
+    }
+    #pp-mega-stress-{{ section_id }} .pp-media-wrap {
+      position: relative;
+      overflow: hidden;
+      border: 1px solid currentColor;
+      background: #0f172a;
+    }
+    #pp-mega-stress-{{ section_id }} .pp-media-wrap::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, var(--pp-overlay));
+      pointer-events: none;
+    }
+    #pp-mega-stress-{{ section_id }}.pp-ratio-16-9 .pp-media-wrap { aspect-ratio: 16 / 9; }
+    #pp-mega-stress-{{ section_id }}.pp-ratio-4-3 .pp-media-wrap { aspect-ratio: 4 / 3; }
+    #pp-mega-stress-{{ section_id }}.pp-ratio-1-1 .pp-media-wrap { aspect-ratio: 1 / 1; }
+    #pp-mega-stress-{{ section_id }} .pp-media-wrap img,
+    #pp-mega-stress-{{ section_id }} .pp-media-wrap video,
+    #pp-mega-stress-{{ section_id }} .pp-media-wrap iframe {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border: 0;
+    }
+    #pp-mega-stress-{{ section_id }} .pp-grid {
+      display: grid;
+      gap: 14px;
+      grid-template-columns: repeat(var(--pp-columns-mobile), minmax(0, 1fr));
+    }
+    @media (min-width: 900px) {
+      #pp-mega-stress-{{ section_id }} .pp-grid {
+        grid-template-columns: repeat(var(--pp-columns-desktop), minmax(0, 1fr));
+      }
+    }
+    #pp-mega-stress-{{ section_id }} .pp-card {
+      padding: 14px;
+      background: #ffffff;
+      border: 1px solid currentColor;
+      display: grid;
+      gap: 8px;
+    }
+    #pp-mega-stress-{{ section_id }}.pp-border-none .pp-card { border-width: 0; }
+    #pp-mega-stress-{{ section_id }}.pp-border-thin .pp-card { border-width: 1px; }
+    #pp-mega-stress-{{ section_id }}.pp-border-thick .pp-card { border-width: 2px; }
+    #pp-mega-stress-{{ section_id }}.pp-border-dashed .pp-card { border-style: dashed; }
+    #pp-mega-stress-{{ section_id }}.pp-shadow-none .pp-card { box-shadow: none; }
+    #pp-mega-stress-{{ section_id }}.pp-shadow-subtle .pp-card { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12); }
+    #pp-mega-stress-{{ section_id }}.pp-shadow-hard .pp-card { box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.75); }
+    #pp-mega-stress-{{ section_id }} .pp-marquee {
+      display: flex;
+      overflow-x: auto;
+      gap: 8px;
+      padding: 8px;
+      border: 1px solid currentColor;
+      background: #111827;
+      color: #f8fafc;
+    }
+    #pp-mega-stress-{{ section_id }} .pp-marquee span {
+      white-space: nowrap;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      padding: 4px 8px;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    #pp-mega-stress-{{ section_id }} .pp-richtext :is(p, ul, ol) {
+      margin: 0 0 10px;
+    }
+    #pp-mega-stress-{{ section_id }} .pp-note {
+      font-size: 12px;
+      opacity: 0.75;
+      border-top: 1px dashed currentColor;
+      padding-top: 10px;
+    }
+    #pp-mega-stress-{{ section_id }} .pp-json {
+      white-space: pre-wrap;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      background: rgba(0, 0, 0, 0.05);
+      padding: 10px;
+      border: 1px solid rgba(0, 0, 0, 0.2);
+      font-size: 12px;
+    }
+  </style>
+
+  <div class="pp-shell">
+    <div class="pp-badge">
+      <span>{{ section.settings.eyebrow | default: 'Stress Test Component' }}</span>
+      <span>•</span>
+      <span>{{ section.settings.status_label | default: 'Preview Build' }}</span>
+    </div>
+
+    <{{ heading_tag }} class="pp-heading">
+      {{ section.settings.heading | default: 'Mega Liquid Stress Test' }}
+    </{{ heading_tag }}>
+
+    <p class="pp-subheading">
+      {{ section.settings.subheading | default: 'Use this component to stress schema parsing, controls, rendering, and patched downloads.' }}
+    </p>
+
+    {% if section.settings.show_announcement %}
+      <div class="pp-card">
+        <strong>{{ section.settings.announcement_title | default: 'Announcement' }}</strong>
+        <div>{{ section.settings.announcement | newline_to_br }}</div>
+      </div>
+    {% endif %}
+
+    {% if section.settings.intro_richtext != blank %}
+      <div class="pp-card pp-richtext">
+        {{ section.settings.intro_richtext }}
+      </div>
+    {% endif %}
+
+    {% if section.settings.raw_html != blank %}
+      <div class="pp-card">
+        {{ section.settings.raw_html }}
+      </div>
+    {% endif %}
+
+    {% if section.settings.custom_liquid != blank %}
+      <div class="pp-card">
+        {{ section.settings.custom_liquid }}
+      </div>
+    {% endif %}
+
+    <div class="pp-media-wrap">
+      {% if section.settings.hero_video != blank %}
+        {{ section.settings.hero_video | video_tag: autoplay: section.settings.autoplay_video, loop: true, muted: section.settings.mute_video, controls: true }}
+      {% elsif section.settings.hero_video_url != blank %}
+        {{ section.settings.hero_video_url | video_tag: autoplay: section.settings.autoplay_video, loop: true, muted: section.settings.mute_video, controls: true }}
+      {% elsif section.settings.hero_image != blank %}
+        {{ section.settings.hero_image | image_url: width: 2000 | image_tag: loading: 'lazy', alt: section.settings.hero_image_alt }}
+      {% else %}
+        <div style="position:absolute;inset:0;display:grid;place-items:center;color:#ffffff;">
+          <span>No media selected</span>
+        </div>
+      {% endif %}
+    </div>
+
+    {% if section.settings.hero_link != blank and section.settings.hero_link_label != blank %}
+      <a href="{{ section.settings.hero_link }}" class="pp-card" style="text-decoration:none;color:inherit;">
+        <strong>{{ section.settings.hero_link_label }}</strong>
+        <span>Open link</span>
+      </a>
+    {% endif %}
+
+    {% if section.settings.enable_marquee %}
+      <div class="pp-marquee">
+        <span>{{ section.settings.marquee_prefix | default: 'Ticker' }}</span>
+        {% for item in marquee_items %}
+          {% assign trimmed = item | strip %}
+          {% if trimmed != blank %}
+            <span>{{ trimmed }}</span>
+          {% endif %}
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <div class="pp-grid">
+      {% for block in section.blocks %}
+        {% case block.type %}
+          {% when 'feature_card' %}
+            <article class="pp-card" {{ block.shopify_attributes }}>
+              {% if block.settings.image != blank %}
+                {{ block.settings.image | image_url: width: 900 | image_tag: loading: 'lazy', alt: block.settings.image_alt }}
+              {% endif %}
+              <h3>{{ block.settings.title }}</h3>
+              {% if block.settings.kicker != blank %}
+                <small>{{ block.settings.kicker }}</small>
+              {% endif %}
+              {% if block.settings.body != blank %}
+                <div class="pp-richtext">{{ block.settings.body }}</div>
+              {% endif %}
+              {% if block.settings.cta_label != blank and block.settings.cta_url != blank %}
+                <a href="{{ block.settings.cta_url }}">{{ block.settings.cta_label }}</a>
+              {% endif %}
+            </article>
+
+          {% when 'stats_row' %}
+            <article class="pp-card" {{ block.shopify_attributes }}>
+              <h3>{{ block.settings.label }}</h3>
+              <div style="font-size: 34px; line-height: 1; color: var(--pp-accent);">
+                {{ block.settings.value }}
+              </div>
+              {% if block.settings.delta != blank %}
+                <div>{{ block.settings.delta }}</div>
+              {% endif %}
+            </article>
+
+          {% when 'faq_item' %}
+            <article class="pp-card" {{ block.shopify_attributes }}>
+              <strong>{{ block.settings.question }}</strong>
+              {% if block.settings.answer != blank %}
+                <div class="pp-richtext">{{ block.settings.answer }}</div>
+              {% endif %}
+            </article>
+
+          {% when 'timeline_item' %}
+            <article class="pp-card" {{ block.shopify_attributes }}>
+              <small>{{ block.settings.date_label }}</small>
+              <h3>{{ block.settings.title }}</h3>
+              <p>{{ block.settings.description }}</p>
+            </article>
+
+          {% when 'media_tile' %}
+            <article class="pp-card" {{ block.shopify_attributes }}>
+              {% if block.settings.video_url != blank %}
+                {{ block.settings.video_url | video_tag: controls: true, muted: true, loop: true }}
+              {% elsif block.settings.image != blank %}
+                {{ block.settings.image | image_url: width: 1200 | image_tag: loading: 'lazy', alt: block.settings.alt }}
+              {% endif %}
+              <strong>{{ block.settings.caption }}</strong>
+              <p>{{ block.settings.description }}</p>
+            </article>
+
+          {% when 'cta_button' %}
+            <article class="pp-card" {{ block.shopify_attributes }}>
+              <h3>{{ block.settings.title }}</h3>
+              <p>{{ block.settings.copy }}</p>
+              {% if block.settings.url != blank and block.settings.label != blank %}
+                <a href="{{ block.settings.url }}">{{ block.settings.label }}</a>
+              {% endif %}
+            </article>
+
+          {% else %}
+            <article class="pp-card" {{ block.shopify_attributes }}>
+              <strong>Unknown block type</strong>
+              <code>{{ block.type }}</code>
+            </article>
+        {% endcase %}
+      {% endfor %}
+    </div>
+
+    <div class="pp-card">
+      <h3>Simulated Resource Inputs</h3>
+      <p>These values are useful for testing fallback controls in non-Shopify environments.</p>
+      <ul>
+        <li>Featured product: {{ section.settings.featured_product }}</li>
+        <li>Featured collection: {{ section.settings.featured_collection }}</li>
+        <li>Featured article: {{ section.settings.featured_article }}</li>
+        <li>Featured blog: {{ section.settings.featured_blog }}</li>
+        <li>Linked page: {{ section.settings.linked_page }}</li>
+        <li>Menu links: {{ section.settings.menu_links }}</li>
+        <li>Metaobject: {{ section.settings.featured_metaobject }}</li>
+      </ul>
+    </div>
+
+    <div class="pp-card pp-json">
+      <strong>Custom JSON Payload</strong>
+      <div>{{ section.settings.custom_data_json }}</div>
+    </div>
+
+    <div class="pp-note">
+      {{ section.settings.footer_note | default: 'This fixture intentionally includes many setting types, unsupported entries, and heavy block presets.' }}
+    </div>
+  </div>
+</section>
+
+{% schema %}
+{
+  "name": "PressPlay Mega Stress Preview",
+  "class": "pressplay-mega-stress-preview",
+  "max_blocks": 60,
+  "settings": [
+    { "type": "header", "content": "Identity and Headline" },
+    { "type": "text", "id": "eyebrow", "label": "Eyebrow", "default": "Component Stress Test" },
+    { "type": "text", "id": "status_label", "label": "Status Label", "default": "v1 Sandbox" },
+    { "type": "text", "id": "heading", "label": "Heading", "default": "Mega Stress Test Section" },
+    { "type": "inline_richtext", "id": "subheading", "label": "Subheading", "default": "A large fixture to test parser and preview behavior." },
+    { "type": "select", "id": "heading_tag", "label": "Heading HTML Tag", "default": "h2", "options": [
+      { "value": "h1", "label": "H1" },
+      { "value": "h2", "label": "H2" },
+      { "value": "h3", "label": "H3" }
+    ] },
+    { "type": "text_alignment", "id": "heading_alignment", "label": "Heading Alignment", "default": "left" },
+    { "type": "font_picker", "id": "heading_font", "label": "Heading Font", "default": "assistant_n4" },
+
+    { "type": "header", "content": "Announcement and Intro Content" },
+    { "type": "checkbox", "id": "show_announcement", "label": "Show Announcement", "default": true },
+    { "type": "text", "id": "announcement_title", "label": "Announcement Title", "default": "Important Update" },
+    { "type": "textarea", "id": "announcement", "label": "Announcement Body", "default": "This is a multiline announcement.\nUse it to validate textarea handling." },
+    { "type": "richtext", "id": "intro_richtext", "label": "Intro Richtext", "default": "<p>Rich text content helps test rendered HTML controls.</p>" },
+    { "type": "html", "id": "raw_html", "label": "Raw HTML", "default": "<div><strong>Raw HTML block</strong> with inline <em>markup</em>.</div>" },
+    { "type": "liquid", "id": "custom_liquid", "label": "Custom Liquid", "default": "<p>Current year: {{ 'now' | date: '%Y' }}</p>" },
+
+    { "type": "header", "content": "Media Controls" },
+    { "type": "image_picker", "id": "hero_image", "label": "Hero Image" },
+    { "type": "text", "id": "hero_image_alt", "label": "Hero Image Alt Text", "default": "Hero media alt text" },
+    { "type": "video", "id": "hero_video", "label": "Hero Video File" },
+    { "type": "video_url", "id": "hero_video_url", "label": "Hero Video URL", "accept": ["youtube", "vimeo"], "default": "https://www.youtube.com/watch?v=dQw4w9WgXcQ" },
+    { "type": "checkbox", "id": "autoplay_video", "label": "Autoplay Video", "default": false },
+    { "type": "checkbox", "id": "mute_video", "label": "Mute Video", "default": true },
+    { "type": "radio", "id": "media_ratio", "label": "Media Aspect Ratio", "default": "16-9", "options": [
+      { "value": "16-9", "label": "16:9" },
+      { "value": "4-3", "label": "4:3" },
+      { "value": "1-1", "label": "1:1" }
+    ] },
+    { "type": "url", "id": "hero_link", "label": "Hero CTA Link" },
+    { "type": "text", "id": "hero_link_label", "label": "Hero CTA Label", "default": "Open Hero Link" },
+    { "type": "range", "id": "overlay_opacity", "label": "Media Overlay Opacity", "default": 30, "min": 0, "max": 100, "step": 5 },
+
+    { "type": "header", "content": "Visual Design Controls" },
+    { "type": "color", "id": "background_color", "label": "Background Color", "default": "#f8f8f6" },
+    { "type": "color", "id": "text_color", "label": "Text Color", "default": "#171717" },
+    { "type": "color", "id": "accent_color", "label": "Accent Color", "default": "#ef4444" },
+    { "type": "color_background", "id": "surface_background", "label": "Surface Background", "default": "linear-gradient(180deg, #ffffff, #f7f7f7)" },
+    { "type": "color_scheme", "id": "scheme", "label": "Color Scheme", "default": "scheme_1" },
+    { "type": "range", "id": "heading_size", "label": "Heading Size", "default": 52, "min": 24, "max": 120, "step": 2 },
+    { "type": "range", "id": "body_size", "label": "Body Size", "default": 16, "min": 12, "max": 24, "step": 1 },
+    { "type": "range", "id": "section_padding_top", "label": "Padding Top", "default": 56, "min": 0, "max": 180, "step": 4 },
+    { "type": "range", "id": "section_padding_bottom", "label": "Padding Bottom", "default": 56, "min": 0, "max": 180, "step": 4 },
+    { "type": "number", "id": "columns_desktop", "label": "Desktop Columns", "default": 3 },
+    { "type": "number", "id": "columns_mobile", "label": "Mobile Columns", "default": 1 },
+    { "type": "select", "id": "layout_density", "label": "Layout Density", "default": "comfortable", "options": [
+      { "value": "compact", "label": "Compact" },
+      { "value": "comfortable", "label": "Comfortable" },
+      { "value": "spacious", "label": "Spacious" }
+    ] },
+    { "type": "select", "id": "border_style", "label": "Card Border Style", "default": "thin", "options": [
+      { "value": "none", "label": "None" },
+      { "value": "thin", "label": "Thin" },
+      { "value": "thick", "label": "Thick" },
+      { "value": "dashed", "label": "Dashed" }
+    ] },
+    { "type": "select", "id": "card_shadow", "label": "Card Shadow Style", "default": "subtle", "options": [
+      { "value": "none", "label": "None" },
+      { "value": "subtle", "label": "Subtle" },
+      { "value": "hard", "label": "Hard" }
+    ] },
+
+    { "type": "header", "content": "Marquee and Dynamic Text" },
+    { "type": "checkbox", "id": "enable_marquee", "label": "Enable Marquee", "default": true },
+    { "type": "text", "id": "marquee_prefix", "label": "Marquee Prefix", "default": "Updates" },
+    { "type": "textarea", "id": "marquee_items", "label": "Marquee Items (use | separator)", "default": "Speed: fast|Parse: stable|Render: dynamic|Patch: enabled|Blocks: heavy" },
+
+    { "type": "header", "content": "Resource and Fallback Stress Inputs" },
+    { "type": "product", "id": "featured_product", "label": "Featured Product" },
+    { "type": "product_list", "id": "related_products", "label": "Related Products" },
+    { "type": "collection", "id": "featured_collection", "label": "Featured Collection" },
+    { "type": "collection_list", "id": "related_collections", "label": "Related Collections" },
+    { "type": "article", "id": "featured_article", "label": "Featured Article" },
+    { "type": "blog", "id": "featured_blog", "label": "Featured Blog" },
+    { "type": "page", "id": "linked_page", "label": "Linked Page" },
+    { "type": "link_list", "id": "menu_links", "label": "Menu Links" },
+    { "type": "metaobject", "id": "featured_metaobject", "label": "Featured Metaobject", "metaobject_type": "custom.sample" },
+    { "type": "metaobject_list", "id": "featured_metaobject_list", "label": "Featured Metaobject List", "metaobject_type": "custom.sample" },
+    { "type": "textarea", "id": "custom_data_json", "label": "Custom Data JSON", "default": "{\"alpha\":1,\"beta\":[\"x\",\"y\",\"z\"],\"nested\":{\"enabled\":true}}" },
+    { "type": "paragraph", "content": "This component intentionally includes many setting types for stress testing." },
+
+    { "type": "header", "content": "Unknown / Future Type Simulation" },
+    { "type": "future_setting_type", "id": "future_toggle", "label": "Future Toggle", "default": "experimental" },
+    { "type": "text", "id": "footer_note", "label": "Footer Note", "default": "End of mega stress test fixture." }
+  ],
+  "blocks": [
+    {
+      "type": "feature_card",
+      "name": "Feature Card",
+      "limit": 24,
+      "settings": [
+        { "type": "text", "id": "kicker", "label": "Kicker", "default": "Feature" },
+        { "type": "text", "id": "title", "label": "Title", "default": "Feature card title" },
+        { "type": "richtext", "id": "body", "label": "Body", "default": "<p>Feature card body copy.</p>" },
+        { "type": "image_picker", "id": "image", "label": "Image" },
+        { "type": "text", "id": "image_alt", "label": "Image Alt", "default": "Feature image alt text" },
+        { "type": "select", "id": "tone", "label": "Tone", "default": "default", "options": [
+          { "value": "default", "label": "Default" },
+          { "value": "muted", "label": "Muted" },
+          { "value": "accent", "label": "Accent" }
+        ] },
+        { "type": "url", "id": "cta_url", "label": "CTA URL" },
+        { "type": "text", "id": "cta_label", "label": "CTA Label", "default": "Read more" }
+      ]
+    },
+    {
+      "type": "stats_row",
+      "name": "Stats Row",
+      "limit": 12,
+      "settings": [
+        { "type": "text", "id": "label", "label": "Label", "default": "Conversion" },
+        { "type": "number", "id": "value", "label": "Value", "default": 42 },
+        { "type": "text", "id": "delta", "label": "Delta", "default": "+12%" },
+        { "type": "checkbox", "id": "highlight", "label": "Highlight", "default": false }
+      ]
+    },
+    {
+      "type": "faq_item",
+      "name": "FAQ Item",
+      "limit": 18,
+      "settings": [
+        { "type": "text", "id": "question", "label": "Question", "default": "What is this component for?" },
+        { "type": "richtext", "id": "answer", "label": "Answer", "default": "<p>It stress-tests schema-driven UIs.</p>" },
+        { "type": "checkbox", "id": "open_by_default", "label": "Open by Default", "default": false }
+      ]
+    },
+    {
+      "type": "timeline_item",
+      "name": "Timeline Item",
+      "limit": 20,
+      "settings": [
+        { "type": "text", "id": "date_label", "label": "Date Label", "default": "Q1 2026" },
+        { "type": "text", "id": "title", "label": "Title", "default": "Milestone title" },
+        { "type": "textarea", "id": "description", "label": "Description", "default": "Timeline description text." }
+      ]
+    },
+    {
+      "type": "media_tile",
+      "name": "Media Tile",
+      "limit": 18,
+      "settings": [
+        { "type": "image_picker", "id": "image", "label": "Image" },
+        { "type": "video_url", "id": "video_url", "label": "Video URL", "accept": ["youtube", "vimeo"] },
+        { "type": "text", "id": "alt", "label": "Image Alt", "default": "Media tile image alt" },
+        { "type": "text", "id": "caption", "label": "Caption", "default": "Media tile caption" },
+        { "type": "textarea", "id": "description", "label": "Description", "default": "Media tile description." }
+      ]
+    },
+    {
+      "type": "cta_button",
+      "name": "CTA Button Card",
+      "limit": 10,
+      "settings": [
+        { "type": "text", "id": "title", "label": "Title", "default": "Call to action" },
+        { "type": "textarea", "id": "copy", "label": "Copy", "default": "Use this CTA block to test small action cards." },
+        { "type": "url", "id": "url", "label": "URL" },
+        { "type": "text", "id": "label", "label": "Label", "default": "Open" },
+        { "type": "color", "id": "button_color", "label": "Button Color", "default": "#111111" }
+      ]
+    }
+  ],
+  "presets": [
+    {
+      "name": "Mega Stress Preset",
+      "blocks": [
+        { "type": "feature_card", "settings": { "title": "Feature A", "kicker": "Alpha", "cta_label": "Explore A" } },
+        { "type": "feature_card", "settings": { "title": "Feature B", "kicker": "Beta", "cta_label": "Explore B" } },
+        { "type": "feature_card", "settings": { "title": "Feature C", "kicker": "Gamma", "cta_label": "Explore C" } },
+        { "type": "stats_row", "settings": { "label": "Requests / min", "value": 1280, "delta": "+8%" } },
+        { "type": "stats_row", "settings": { "label": "Render p95", "value": 96, "delta": "-11%" } },
+        { "type": "faq_item", "settings": { "question": "Does this include unknown settings?", "open_by_default": true } },
+        { "type": "faq_item", "settings": { "question": "Can blocks be reordered?", "open_by_default": false } },
+        { "type": "timeline_item", "settings": { "date_label": "Phase 1", "title": "Setup", "description": "Initialized schema and storage layers." } },
+        { "type": "timeline_item", "settings": { "date_label": "Phase 2", "title": "Admin", "description": "Built upload and moderation flow." } },
+        { "type": "timeline_item", "settings": { "date_label": "Phase 3", "title": "Gallery", "description": "Shipped public browse and download." } },
+        { "type": "timeline_item", "settings": { "date_label": "Phase 4", "title": "Sandbox", "description": "Live schema-driven editing and patched download." } },
+        { "type": "media_tile", "settings": { "caption": "Media One", "description": "First media tile." } },
+        { "type": "media_tile", "settings": { "caption": "Media Two", "description": "Second media tile." } },
+        { "type": "cta_button", "settings": { "title": "Primary Action", "label": "Launch" } },
+        { "type": "cta_button", "settings": { "title": "Secondary Action", "label": "Inspect" } }
+      ]
+    }
+  ]
+}
+{% endschema %}
