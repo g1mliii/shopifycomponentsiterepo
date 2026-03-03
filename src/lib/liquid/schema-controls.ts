@@ -32,6 +32,48 @@ const LOCAL_FILE_PREVIEW_TYPES = new Set(["image_picker", "video", "video_url"])
 const SIMULATED_RESOURCE_TYPES = new Set(["product", "collection", "article", "blog", "page"]);
 const SIMULATED_RESOURCE_LIST_TYPES = new Set(["product_list", "collection_list", "metaobject_list"]);
 
+function getUnknownControlSpec(setting: LiquidSchemaSetting): LiquidControlSpec {
+  const defaultValue = setting.defaultValue;
+
+  if (typeof defaultValue === "boolean") {
+    return {
+      kind: "checkbox",
+      inputType: "checkbox",
+      simulated: false,
+      unknown: true,
+      supportsLocalFilePreview: false,
+    };
+  }
+
+  if (typeof defaultValue === "number") {
+    return {
+      kind: "number",
+      inputType: "number",
+      simulated: false,
+      unknown: true,
+      supportsLocalFilePreview: false,
+    };
+  }
+
+  if (defaultValue !== null && typeof defaultValue === "object") {
+    return {
+      kind: "json",
+      inputType: "textarea",
+      simulated: false,
+      unknown: true,
+      supportsLocalFilePreview: false,
+    };
+  }
+
+  return {
+    kind: "text",
+    inputType: "text",
+    simulated: false,
+    unknown: true,
+    supportsLocalFilePreview: false,
+  };
+}
+
 export function getSettingControlSpec(setting: LiquidSchemaSetting): LiquidControlSpec {
   const type = setting.type.toLowerCase();
 
@@ -166,13 +208,7 @@ export function getSettingControlSpec(setting: LiquidSchemaSetting): LiquidContr
   }
 
   if (setting.support === "unknown") {
-    return {
-      kind: "json",
-      inputType: "textarea",
-      simulated: false,
-      unknown: true,
-      supportsLocalFilePreview: false,
-    };
+    return getUnknownControlSpec(setting);
   }
 
   return {

@@ -26,6 +26,7 @@ const SANDBOX_LIQUID_SOURCE = `{% assign heading = section.settings.heading %}
     { "type": "text", "id": "heading", "label": "Heading", "default": "Initial heading" },
     { "type": "range", "id": "padding", "label": "Padding", "min": 0, "max": 80, "step": 2, "default": 20 },
     { "type": "checkbox", "id": "show_heading", "label": "Show heading", "default": true },
+    { "type": "color_scheme", "id": "scheme", "label": "Color Scheme", "default": "scheme_1" },
     { "type": "image_picker", "id": "hero_image", "label": "Hero image" }
   ],
   "blocks": [

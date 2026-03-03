@@ -120,6 +120,49 @@ type SimulatedMenuShape = {
   links: string[];
 };
 
+const SIMULATED_RESOURCE_HANDLE_PLACEHOLDERS: Record<string, string> = {
+  article: "articles/example-article",
+  blog: "blogs/example-blog",
+  collection: "collections/example-collection",
+  page: "pages/example-page",
+  product: "products/example-product",
+};
+
+const SIMULATED_RESOURCE_LIST_PLACEHOLDERS: Record<string, string> = {
+  collection_list: "collections/my-collection",
+  metaobject_list: "custom.sample/my-entry",
+  product_list: "products/my-product",
+};
+
+function getResourceHandlePlaceholder(settingType: string): string {
+  return SIMULATED_RESOURCE_HANDLE_PLACEHOLDERS[settingType] ?? "resources/example-handle";
+}
+
+function getResourceListPlaceholder(settingType: string, setting: LiquidSchemaSetting): string {
+  if (settingType === "metaobject_list") {
+    return `${getMetaobjectTypeFromSetting(setting)}/my-entry`;
+  }
+
+  return SIMULATED_RESOURCE_LIST_PLACEHOLDERS[settingType] ?? "resources/my-handle";
+}
+
+function getMetaobjectTypeFromSetting(setting: LiquidSchemaSetting): string {
+  const rawMetaobjectType = setting.raw.metaobject_type;
+  if (typeof rawMetaobjectType !== "string") {
+    return "custom.sample";
+  }
+
+  const normalized = rawMetaobjectType.trim();
+  return normalized.length > 0 ? normalized : "custom.sample";
+}
+
+function toSelectFallbackLabel(value: string): string {
+  return value
+    .replace(/[_-]+/g, " ")
+    .trim()
+    .replace(/\b[a-z]/g, (character) => character.toUpperCase());
+}
+
 function toSimulatedResourceShape(value: LiquidSettingJsonValue): SimulatedResourceShape {
   if (isRecordValue(value)) {
     return {
@@ -183,16 +226,19 @@ function toSimulatedMenuShape(value: LiquidSettingJsonValue): SimulatedMenuShape
 }
 
 type SimulatedEditorProps = {
+  setting: LiquidSchemaSetting;
   pathKey: string;
   value: LiquidSettingJsonValue;
   onChange: (pathKey: string, nextValue: LiquidSettingJsonValue) => void;
 };
 
 const SimulatedResourceEditor = memo(function SimulatedResourceEditor({
+  setting,
   pathKey,
   value,
   onChange,
 }: SimulatedEditorProps) {
+  const settingType = setting.type.toLowerCase();
   const normalized = toSimulatedResourceShape(value);
   const inputClass =
     "mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500 focus-visible:ring-offset-1";
@@ -217,7 +263,7 @@ const SimulatedResourceEditor = memo(function SimulatedResourceEditor({
         id={`${pathKey}:handle`}
         type="text"
         value={normalized.handle}
-        placeholder="products/example-handle"
+        placeholder={getResourceHandlePlaceholder(settingType)}
         onChange={(event) => apply({ handle: event.target.value })}
         className={inputClass}
       />
@@ -249,10 +295,12 @@ const SimulatedResourceEditor = memo(function SimulatedResourceEditor({
 });
 
 const SimulatedMetaobjectEditor = memo(function SimulatedMetaobjectEditor({
+  setting,
   pathKey,
   value,
   onChange,
 }: SimulatedEditorProps) {
+  const metaobjectType = getMetaobjectTypeFromSetting(setting);
   const normalized = toSimulatedMetaobjectShape(value);
   const inputClass =
     "mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500 focus-visible:ring-offset-1";
@@ -277,7 +325,7 @@ const SimulatedMetaobjectEditor = memo(function SimulatedMetaobjectEditor({
         id={`${pathKey}:type`}
         type="text"
         value={normalized.type}
-        placeholder="custom.sample"
+        placeholder={metaobjectType}
         onChange={(event) => apply({ type: event.target.value })}
         className={inputClass}
       />
@@ -309,10 +357,16 @@ const SimulatedMetaobjectEditor = memo(function SimulatedMetaobjectEditor({
 });
 
 const SimulatedResourceListEditor = memo(function SimulatedResourceListEditor({
+  setting,
   pathKey,
   value,
   onChange,
 }: SimulatedEditorProps) {
+  const settingType = setting.type.toLowerCase();
+  const draftPlaceholder = useMemo(
+    () => getResourceListPlaceholder(settingType, setting),
+    [setting, settingType],
+  );
   const [draft, setDraft] = useState("");
   const entries = toStringArray(value);
   const inputClass =
@@ -338,7 +392,7 @@ const SimulatedResourceListEditor = memo(function SimulatedResourceListEditor({
           id={`${pathKey}:draft`}
           type="text"
           value={draft}
-          placeholder="products/my-handle"
+          placeholder={draftPlaceholder}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => {
             if (event.key !== "Enter") {
@@ -562,7 +616,40 @@ const SettingControl = memo(function SettingControl({
   const control = getSettingControlSpec(setting);
 
   const sharedInputClass =
-    "mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500 focus-visible:ring-offset-1";
+    "mt-1 block w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500 focus-visible:ring-offset-1";
+  const selectOptions = useMemo(() => {
+    if (control.kind !== "select") {
+      return [];
+    }
+
+    if (setting.options.length > 0) {
+      return setting.options;
+    }
+
+    if (setting.type.toLowerCase() !== "color_scheme") {
+      return [];
+    }
+
+    const nextOptions = new Set<string>();
+    const defaultValue = toInputValue(setting.defaultValue).trim();
+    const currentValue = toInputValue(value).trim();
+
+    if (defaultValue) {
+      nextOptions.add(defaultValue);
+    }
+    if (currentValue) {
+      nextOptions.add(currentValue);
+    }
+
+    for (let index = 1; index <= 8; index += 1) {
+      nextOptions.add(`scheme_${index}`);
+    }
+
+    return Array.from(nextOptions).map((optionValue) => ({
+      value: optionValue,
+      label: toSelectFallbackLabel(optionValue),
+    }));
+  }, [control.kind, setting.defaultValue, setting.options, setting.type, value]);
 
   return (
     <div className="rounded-xl border border-zinc-200 bg-white p-3 shadow-sm">
@@ -638,18 +725,32 @@ const SettingControl = memo(function SettingControl({
       ) : null}
 
       {control.kind === "select" ? (
-        <select
-          id={pathKey}
-          value={toInputValue(value)}
-          onChange={(event) => onChange(pathKey, event.target.value)}
-          className={sharedInputClass}
-        >
-          {setting.options.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
+        selectOptions.length > 0 ? (
+          <select
+            id={pathKey}
+            value={toInputValue(value)}
+            onChange={(event) => onChange(pathKey, event.target.value)}
+            className={sharedInputClass}
+          >
+            {selectOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <div className="mt-2">
+            <input
+              id={pathKey}
+              type="text"
+              value={toInputValue(value)}
+              placeholder={setting.placeholder ?? ""}
+              onChange={(event) => onChange(pathKey, event.target.value)}
+              className={sharedInputClass}
+            />
+            <p className="mt-1 text-xs text-zinc-600">No selectable options were provided in schema; using text fallback.</p>
+          </div>
+        )
       ) : null}
 
       {control.kind === "textarea" ? (
@@ -684,19 +785,19 @@ const SettingControl = memo(function SettingControl({
       ) : null}
 
       {control.kind === "simulated_resource" ? (
-        <SimulatedResourceEditor pathKey={pathKey} value={value} onChange={onChange} />
+        <SimulatedResourceEditor setting={setting} pathKey={pathKey} value={value} onChange={onChange} />
       ) : null}
 
       {control.kind === "simulated_resource_list" ? (
-        <SimulatedResourceListEditor pathKey={pathKey} value={value} onChange={onChange} />
+        <SimulatedResourceListEditor setting={setting} pathKey={pathKey} value={value} onChange={onChange} />
       ) : null}
 
       {control.kind === "simulated_metaobject" ? (
-        <SimulatedMetaobjectEditor pathKey={pathKey} value={value} onChange={onChange} />
+        <SimulatedMetaobjectEditor setting={setting} pathKey={pathKey} value={value} onChange={onChange} />
       ) : null}
 
       {control.kind === "simulated_menu" ? (
-        <SimulatedMenuEditor pathKey={pathKey} value={value} onChange={onChange} />
+        <SimulatedMenuEditor setting={setting} pathKey={pathKey} value={value} onChange={onChange} />
       ) : null}
 
       {control.kind === "text" || control.kind === "url" ? (

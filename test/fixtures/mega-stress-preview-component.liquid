@@ -143,6 +143,24 @@
       border-top: 1px dashed currentColor;
       padding-top: 10px;
     }
+    #pp-mega-stress-{{ section_id }} .pp-stat-value {
+      font-size: 34px;
+      line-height: 1;
+      color: var(--pp-text);
+    }
+    #pp-mega-stress-{{ section_id }} .pp-stat-value.pp-highlight {
+      color: var(--pp-accent);
+    }
+    #pp-mega-stress-{{ section_id }} .pp-stat-delta {
+      font-size: 13px;
+      opacity: 0.9;
+    }
+    #pp-mega-stress-{{ section_id }} .pp-stat-delta.pp-positive {
+      color: #15803d;
+    }
+    #pp-mega-stress-{{ section_id }} .pp-stat-delta.pp-negative {
+      color: #b91c1c;
+    }
     #pp-mega-stress-{{ section_id }} .pp-json {
       white-space: pre-wrap;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
@@ -249,11 +267,21 @@
           {% when 'stats_row' %}
             <article class="pp-card" {{ block.shopify_attributes }}>
               <h3>{{ block.settings.label }}</h3>
-              <div style="font-size: 34px; line-height: 1; color: var(--pp-accent);">
+              {% assign delta_value = block.settings.delta | default: '' | strip %}
+              {% assign delta_class = '' %}
+              {% if delta_value != blank %}
+                {% assign first_delta_char = delta_value | slice: 0, 1 %}
+                {% if first_delta_char == '-' %}
+                  {% assign delta_class = ' pp-negative' %}
+                {% elsif first_delta_char == '+' %}
+                  {% assign delta_class = ' pp-positive' %}
+                {% endif %}
+              {% endif %}
+              <div class="pp-stat-value{% if block.settings.highlight %} pp-highlight{% endif %}">
                 {{ block.settings.value }}
               </div>
-              {% if block.settings.delta != blank %}
-                <div>{{ block.settings.delta }}</div>
+              {% if delta_value != blank %}
+                <div class="pp-stat-delta{{ delta_class }}">{{ delta_value }}</div>
               {% endif %}
             </article>
 

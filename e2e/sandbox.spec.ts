@@ -28,6 +28,12 @@ test("sandbox renders live preview and downloads patched liquid", async ({ page 
   await page.goto(`/components/${encodeURIComponent(fixture.componentId)}/sandbox`);
   await expect(page.getByRole("heading", { name: "Liquid Sandbox" })).toBeVisible();
 
+  const colorSchemeSelect = page.getByLabel("Color Scheme");
+  await expect(colorSchemeSelect).toBeVisible();
+  await expect(colorSchemeSelect.locator("option")).toHaveCount(8);
+  await colorSchemeSelect.selectOption("scheme_2");
+  await expect(colorSchemeSelect).toHaveValue("scheme_2");
+
   const sectionHeadingInput = page.getByLabel("Heading").first();
   await sectionHeadingInput.fill("Updated heading from e2e");
 

@@ -31,460 +31,153 @@ Always aim to:
 </role>
 
 <design-system>
-# Design Style: Newsprint
+# Design Style: Organic / Natural
 
 ## 1. Design Philosophy
+This style embraces **wabi-sabi**—the acceptance of transience and imperfection. It rejects the cold precision of digital interfaces in favor of **warmth, softness, and natural connection**. It feels **tactile, grounded, and calming**.
 
-**"All the News That's Fit to Print."**
+### Visual DNA
+*   **Core Signature**: Soft, amorphous blob shapes with varied organic border radii (using complex percentages like `60% 40% 30% 70% / 60% 30% 70% 40%`)
+*   **Texture is Essential**: Global grain/noise texture overlay at 3-4% opacity with multiply blend mode creates paper-like quality
+*   **Color Psychology**: Earth-drawn palette evokes forest floors, clay pottery, unbleached paper, dried grass, and river stones
+*   **Shadow Philosophy**: Soft, diffused shadows with natural color tints (moss green, clay orange) instead of pure black
+*   **Typography Emotion**: Fraunces serif brings old-world warmth with modern softness; Nunito's rounded terminals echo organic shapes
 
-This style is an ode to the golden age of print journalism, reimagined for the web. It embodies **absolute clarity, hierarchy, and structure** through its unwavering commitment to high-contrast typography, grid-based layouts, and sharp geometric precision.
-
-### Core DNA
-The newsprint aesthetic rejects modern web trends of soft shadows, blurred backgrounds, and rounded corners. Instead, it embraces:
-
-- **Stark Geometry**: Zero border radius. Every element is a perfect rectangle with sharp 90-degree corners.
-- **High Information Density**: Tight padding, collapsed grid borders, and efficient use of space mimic newspaper column layouts.
-- **Typographic Drama**: Massive serif headlines (up to 9xl on desktop) paired with smaller, highly legible body text create extreme hierarchy.
-- **Visible Structure**: Grid lines aren't hidden—they're celebrated. Borders between columns and sections are explicit and prominent.
-- **Editorial Authority**: The design feels serious, timeless, and trustworthy—like a publication of record.
-- **Paper Texture**: Subtle grain overlays and line patterns simulate the tactile quality of newsprint without being overly skeuomorphic.
-
-### Vibe
-Authoritative, intellectual, urgent, timeless. It feels like holding a fresh morning newspaper—crisp, organized, and information-rich. The design exudes confidence and credibility.
+### Design Principles
+*   **Vibe**: Peaceful, sustainable, handcrafted, authentic, rooted, welcoming, human
+*   **Core Tenet**: "There are no straight lines in nature." Avoid sharp 90-degree angles. Everything should feel eroded by wind or water, or shaped by hand.
+*   **Rhythm**: Generous whitespace creates breathing room. Staggered grids and varied border radii prevent mechanical uniformity.
+*   **Interaction**: Gentle, natural motion—elements scale and lift on hover like picking up a river stone. No harsh snaps.
+*   **Asymmetry**: Intentional imperfection through rotated images, offset elements, and varied card shapes creates organic authenticity
+*   **Depth**: Multiple z-layers with blurred blobs, translucent overlays, and soft shadows create atmospheric depth without harsh contrast
 
 ## 2. Design Token System (The DNA)
 
-### Colors (Single Palette)
-**Mode:** Light (Permanent - no dark mode)
-
-- **Background:** `#F9F9F7` (Newsprint Off-White)
-  A warm off-white that mimics aged paper. Not pure white—adds subtle warmth and reduces eye strain.
-
-- **Foreground:** `#111111` (Ink Black)
-  Very deep black, not pure `#000`. Used for all text and borders.
-
-- **Muted:** `#E5E5E0` (Divider Grey)
-  Light grey for secondary borders and subtle backgrounds.
-
-- **Accent:** `#CC0000` (Editorial Red)
-  Bright, unapologetic red used extremely sparingly—only for breaking news badges, CTAs, and hover states. 99% of the design is black and white.
-
-- **Border:** `#111111` (Ink Black)
-  The primary structural element. Borders define the grid and create visual rhythm.
-
-- **Neutral Shades:**
-  `neutral-100`: `#F5F5F5` (hover backgrounds)
-  `neutral-200`: `#E5E5E5` (image placeholders)
-  `neutral-400`: `#A3A3A3` (muted text in dark sections)
-  `neutral-500`: `#737373` (metadata, captions)
-  `neutral-600`: `#525252` (body text variations)
-  `neutral-700`: `#404040` (secondary headings)
+### Colors (Single Palette - Light Mode)
+A palette drawn from the forest floor, clay, and unbleached paper.
+*   `background`: `#FDFCF8` (Off-white, Rice Paper)
+*   `foreground`: `#2C2C24` (Deep Loam / Charcoal)
+*   `primary`: `#5D7052` (Moss Green)
+*   `primary-foreground`: `#F3F4F1` (Pale Mist)
+*   `secondary`: `#C18C5D` (Terracotta / Clay)
+*   `secondary-foreground`: `#FFFFFF` (White)
+*   `accent`: `#E6DCCD` (Sand / Beige)
+*   `accent-foreground`: `#4A4A40` (Bark)
+*   `muted`: `#F0EBE5` (Stone)
+*   `muted-foreground`: `#78786C` (Dried Grass)
+*   `border`: `#DED8CF` (Raw Timber)
+*   `destructive`: `#A85448` (Burnt Sienna)
 
 ### Typography
-we are usiing system fonts to preserve performance so ignore most of this unless we have certain areas where we are not using system fonts than we can apply this 
-**Font Stack:**
-- **Serif (Headlines & Display):** `'Playfair Display', 'Times New Roman', serif`
-  High-contrast, elegant, authoritative. Used for all major headings.
+Combining a characterful serif with a clean, rounded sans-serif.
+*   **Headings**: **'Fraunces'** (Google Font). A variable font with "soft" axes. It has a distinct, old-style warmth but feels modern. Use weights 600-800.
+*   **Body**: **'Nunito'** or **'Quicksand'**. Rounded terminals are essential to match the organic shapes.
+*   **Scale**: Moderate, not aggressive. 1.25 scale.
 
-- **Serif (Body):** `'Lora', Georgia, serif`
-  Highly legible serif for long-form reading text and paragraphs.
+### Radius & Shapes
+*   **Standard Radius**: `rounded-2xl` (16px) or `rounded-3xl` (24px).
+*   **Organic Shapes**: Use custom classes or inline styles for specific elements to create blob shapes.
+    *   Example: `border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%;`
+*   **Borders**: Soft, sometimes slightly imperfect (simulated via double borders or slightly transparent thick borders).
 
-- **Sans-Serif (UI):** `'Inter', 'Helvetica Neue', sans-serif`
-  Clean, modern sans for labels, buttons, navigation, and metadata.
-
-- **Monospace (Data):** `'JetBrains Mono', 'Courier New', monospace`
-  For stats, dates, edition numbers, and technical information.
-
-**Scale Strategy:**
-- **H1 (Hero Headlines):** `text-5xl sm:text-6xl lg:text-9xl` (80px → 128px)
-  Massive, viewport-dominating. Use `leading-[0.9]` for ultra-tight line height. Apply `tracking-tighter` for condensed feel.
-
-- **H2 (Section Headers):** `text-4xl lg:text-5xl` (36px → 48px)
-  Bold, `font-black`, uppercase or sentence case depending on context.
-
-- **H3 (Card Titles):** `text-2xl lg:text-3xl` (24px → 30px)
-  `font-bold`, serif.
-
-- **Body Text:** `text-sm` to `text-lg` (14px → 18px)
-  Body font (Lora), `leading-relaxed` (line-height: 1.625).
-
-- **Metadata/Labels:** `text-xs` (12px)
-  Uppercase, `tracking-widest`, monospace or sans.
-
-**Text Transform:**
-- Uppercase for: Navigation, labels, metadata, badges, small caps for author bylines.
-- Sentence case for: Headlines, article titles, body text.
-
-### Radius & Border
-
-**Border Radius:** `0px` everywhere. No exceptions.
-Use inline styles or a `.sharp-corners` utility class to enforce zero radius on all components.
-
-**Border Width:**
-- Standard: `1px` solid black (`border`, `border-r`, `border-b`)
-- Heavy emphasis: `border-b-4` or `border-4` (4px solid) for major section dividers
-- Collapsed grids: Adjacent elements share borders to avoid double lines
-
-**Border Style:**
-Always solid. Never dashed or dotted except for rare decorative elements (e.g., `border-dashed` inside pricing cards for feature dividers).
-
-### Shadows/Effects
-
-**Philosophy:** Flat design. No soft drop shadows.
-
-**Hover Effects:**
-- **Hard Offset Shadow:** `box-shadow: 4px 4px 0px 0px #111111`
-  Applied on hover to blog cards or interactive elements. Creates a "lifted" newspaper cutout effect.
-
-- **Implementation:**
-  ```css
-  .hard-shadow-hover:hover {
-    box-shadow: 4px 4px 0px 0px #111111;
-    transform: translate(-2px, -2px);
-  }
-  ```
-
-**No Effects:**
-- No blur
-- No inner shadows (except for rare decorative purposes)
-- No gradient overlays
-
-### Textures & Patterns
-
-**Critical for Depth:** The newsprint style avoids "flat generic web design" through layered textures.
-
-**1. Dot Grid Pattern (Main Background):**
-```html
-backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4' viewBox='0 0 4 4'%3E%3Cpath fill='%23111111' fill-opacity='0.04' d='M1 3h1v1H1V3zm2-2h1v1H3V1z'%3E%3C/path%3E%3C/svg%3E")`
-```
-Subtle 4×4px dot pattern applied to the body background.
-
-**2. Line Grid Overlay (Section Texture):**
-```css
-.newsprint-texture {
-  position: relative;
-}
-.newsprint-texture::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background-image:
-    linear-gradient(0deg, transparent 98%, rgba(0,0,0,0.02) 100%),
-    linear-gradient(90deg, transparent 98%, rgba(0,0,0,0.02) 100%);
-  background-size: 3px 3px;
-  pointer-events: none;
-  opacity: 0.5;
-}
-```
-Apply `.newsprint-texture` to major sections for a fine graph-paper effect.
-
-**3. Radial Dot Pattern (Image Placeholders):**
-```html
-<div className="bg-[radial-gradient(#000_1px,transparent_1px)] opacity-10 [background-size:16px_16px]" />
-```
-Used in placeholder images to simulate halftone printing.
-
-**4. Ornamental Dividers:**
-Use serif ornaments between major sections:
-```html
-<div className="py-8 text-center font-serif text-2xl text-neutral-400 tracking-[1em]">
-  &#x2727; &#x2727; &#x2727;
-</div>
-```
+### Shadows & Effects
+*   **Shadows**: Soft, diffused, colored shadows. Never pure black.
+    *   `shadow-soft`: `0 4px 20px -2px rgba(93, 112, 82, 0.15)` (Moss tinted)
+    *   `shadow-float`: `0 10px 40px -10px rgba(193, 140, 93, 0.2)` (Clay tinted)
+*   **Textures**: **CRITICAL**. The background should have a subtle noise or paper grain overlay.
+    *   Implementation: Use a fixed pseudo-element on the body or main container with a base64 noise pattern set to `mix-blend-mode: multiply` and very low opacity (3-5%).
 
 ## 3. Component Stylings
 
 ### Buttons
+*   **Shape**: Fully rounded pills (`rounded-full`) for all variants
+*   **Primary**: Moss Green (#5D7052) background with Pale Mist (#F3F4F1) text. Soft colored shadow: `shadow-[0_4px_20px_-2px_rgba(93,112,82,0.15)]`
+*   **Outline**: 2px Terracotta (#C18C5D) border, transparent background, Terracotta text
+*   **Ghost**: Transparent with Moss Green text, hover fills with Moss/10 background
+*   **Interaction**: `hover:scale-105` with deepened shadow `hover:shadow-[0_6px_24px_-4px_rgba(93,112,82,0.25)]`. Active state: `active:scale-95` for tactile feedback
+*   **Sizes**: Default h-12, sm h-10, lg h-14. Generous horizontal padding (px-8 to px-10)
+*   **Typography**: Bold weight, base to lg sizing
 
-**Primary Button (Default):**
-```tsx
-className="bg-[#111111] text-[#F9F9F7] border border-transparent hover:bg-white hover:text-[#111111] hover:border-[#111111]"
-```
-- Solid black background, white text
-- On hover: Inverts to white background, black text and border
-- Sharp corners (enforced)
-- Uppercase text with `tracking-widest`
-- Transition: `transition-all duration-200`
-
-**Secondary Button (Outline):**
-```tsx
-className="border border-[#111111] bg-transparent hover:bg-[#111111] hover:text-[#F9F9F7]"
-```
-- Transparent background, black border and text
-- On hover: Fills with black, text turns white
-
-**Ghost Button:**
-```tsx
-className="hover:bg-[#E5E5E0] hover:text-[#111111]"
-```
-- No border, subtle grey background on hover
-
-**Link Button:**
-```tsx
-className="text-[#111111] underline-offset-4 decoration-2 decoration-[#CC0000] hover:underline"
-```
-- Text-only, red underline on hover
-
-**Touch Targets:**
-Ensure minimum `min-h-[44px]` and `min-w-[44px]` for mobile accessibility.
-
-### Cards/Containers
-
-**Standard Card:**
-```tsx
-<div className="border border-[#111111] bg-[#F9F9F7] p-6">
-```
-- Sharp black border
-- Off-white background
-- Tight padding (p-4 to p-8)
-
-**Newspaper Column Grid:**
-- Use `border-r` and `border-b` to create collapsed grid layouts
-- Example: 4-column feature grid where each cell has `border-r` except the last, and all have `border-b` on mobile
-
-**Hover States:**
-- Add `hover:bg-neutral-100` to interactive cards
-- Optionally add `.hard-shadow-hover` for dramatic lift effect
+### Cards / Containers
+*   **Background**: Extremely light beige (#FEFEFA) over off-white page background
+*   **Border**: Soft timber border (#DED8CF) at 50% opacity: `border-[#DED8CF]/50`
+*   **Shape**: `rounded-[2rem]` base with asymmetric variations using custom values like `rounded-tl-[4rem]` on specific corners
+*   **Shadows**: Moss-tinted soft shadow: `shadow-[0_4px_20px_-2px_rgba(93,112,82,0.15)]`
+*   **Texture**: Fixed noise overlay layer at 3% opacity with multiply blend mode
+*   **Interaction**: Feature cards lift with `hover:-translate-y-1` and shadow deepens to `hover:shadow-[0_20px_40px_-10px_rgba(93,112,82,0.15)]`
 
 ### Inputs
+*   **Shape**: Pill-shaped with `rounded-full`
+*   **Border**: Timber border (#DED8CF)
+*   **Background**: `bg-white/50` (semi-transparent) revealing page grain texture beneath
+*   **Focus State**: `focus-visible:ring-2 ring-[#5D7052]/30` with `ring-offset-2` for soft, natural glow (not sharp outline)
+*   **Typography**: Sans-serif body font, text-sm
+*   **Height**: h-12 for comfortable touch target
 
-**Style:**
-```tsx
-className="border-b-2 border-[#111111] bg-transparent px-3 py-2 font-mono text-sm focus-visible:bg-[#F0F0F0] focus-visible:outline-none"
-```
-- Transparent background
-- Only bottom border (2px solid black)
-- Monospace font
-- On focus: Light grey background (`#F0F0F0`), no ring
+### Navigation
+*   **Style**: Sticky floating pill (`sticky top-4`) with glassmorphism
+*   **Background**: `bg-white/70` with `backdrop-blur-md` for frosted effect
+*   **Border**: Soft timber border at 50% opacity with subtle shadow
+*   **Shape**: `rounded-full`
+*   **Logo**: Circular moss green container with white icon
+*   **Mobile**: Full menu dropdown with organic rounded borders (`rounded-[2rem]`)
 
-**No Radius:** Enforce `borderRadius: 0px` inline.
+## 4. Layout & Spacing
+*   **Container Widths**: Vary by section for visual rhythm
+    *   Primary content: `max-w-7xl` (hero, features, blog, pricing)
+    *   Focused content: `max-w-6xl` (how it works, FAQ)
+    *   Intimate content: `max-w-5xl` (final CTA)
+    *   Text-heavy sections: `max-w-4xl` (hero inner), `max-w-2xl` (product detail text)
+*   **Section Padding**: Consistent `py-32` vertical spacing with `px-4 sm:px-6 lg:px-8` horizontal
+*   **Grid Patterns**:
+    *   Stats: `grid-cols-2 md:grid-cols-4`
+    *   Features/Blog/Testimonials: `md:grid-cols-3` (or `md:grid-cols-2 lg:grid-cols-3`)
+    *   Two-column layouts: `lg:grid-cols-2`
+    *   Grid gaps: Consistent `gap-8` with optional `md:gap-12` for stats
+*   **Whitespace Philosophy**: Use generous gaps (gap-8, gap-12, gap-16) to let design breathe. Space is a design element, not empty canvas.
 
-
-## 4. Non-Genericness (The "Bold" Factor)
-
-### Mandatory Bold Choices
-
-**1. Vertical Grid Dividers:**
-Don't just separate sections horizontally. Use `border-r` to create strict vertical columns even within the same row. The page should feel like a newspaper grid, not a typical website.
-
-**2. Drop Caps:**
-Apply massive drop caps (`text-7xl`, `float-left`) to the first letter of key paragraphs (hero intro, product detail). Accent color optional.
-
-**3. Marquee Ticker:**
-Use a horizontal scrolling ticker (e.g., `react-fast-marquee`) for stats. Black background, white text, red accent badges. Mimics stock ticker or breaking news crawl.
-
-**4. Edition Metadata:**
-Add newspaper-style metadata:
-- "Vol. 1 | [Date] | New York Edition" in header
-- "Edition: Vol 1.0 | Printed in NYC" in footer
-- "Fig. 1.1" captions on images
-
-**5. Justified Text:**
-Use `text-justify` for multi-column body text (blog descriptions, product detail) to create that newspaper column look.
-
-**6. Grayscale Images:**
-Apply `grayscale` filter to all images by default. On hover, add `sepia-[50%]` for a vintage newspaper photo effect.
-
-**7. Asymmetric Layouts:**
-Don't default to 50/50 splits. Use 8-col/4-col, 5-col/7-col splits for editorial feel.
-
-**8. Uppercase Labels:**
-Liberally use `uppercase tracking-widest text-xs font-mono` for section labels, navigation, and metadata.
-
-**9. Inverted Sections:**
-Flip at least one major section to black background with white text (e.g., How It Works). Use red accent for numbered steps.
-
-## 5. Layout Strategy
-
-### Container
-**Max Width:** `max-w-screen-xl` (1280px)
-Centered with `mx-auto`, horizontal padding `px-4`
-
-### Grid System
-**Base:** 12-column grid
-Use Tailwind's `grid-cols-12` with `col-span-*` for precise control.
-
-**Common Splits:**
-- Hero: `lg:col-span-8` / `lg:col-span-4`
-- Benefits: `lg:col-span-5` / `lg:col-span-7`
-- Footer: `col-span-2` for logo/description, `col-span-1` for link columns
-
-**Collapsed Borders:**
-Adjacent grid cells share borders. Use `border-r` on all but the last column, `border-b` on all rows.
-
-### Z-Index Layers
-- Header (sticky): `z-40`
-- Overlays/modals: `z-50`
+## 5. Non-Genericness (The Bold Factors)
+*   **Blob Backgrounds**: Large absolute-positioned blobs with `blur-3xl` create ambient color washes. Multiple shapes (via shapeIndex prop) with varied organic border radii. Used in Hero (2 blobs), Product Detail, Features, and Final CTA sections.
+*   **Rotated Image Frames**: Product detail image rotated `-2deg` with thick 4px white border creates handcrafted photo feel
+*   **Organic Image Masks**: Benefits section image uses complex blob border-radius: `rounded-[30%_70%_70%_30%_/_30%_30%_70%_70%]`
+*   **Asymmetric Card Radii**: Feature cards cycle through 6 different border-radius patterns, mixing large corner curves (4rem, 5rem) with standard (2rem)
+*   **Curved SVG Connectors**: How It Works uses hand-drawn looking curved dashed SVG path instead of straight lines
+*   **Hover Micro-rotations**: Testimonial cards subtly rotate on hover (`hover:rotate-1`) mimicking picking up a physical card
+*   **Varied Section Backgrounds**: Alternating between off-white, stone tint (#F0EBE5/30), sand (#E6DCCD/30), moss green (#5D7052), and terracotta (#C18C5D)
+*   **Dual Texture Layers**: Global grain texture PLUS section-specific noise overlays and blob backgrounds create rich depth
 
 ## 6. Effects & Animation
+*   **Transition Philosophy**: Natural, gentle motion. Use `transition-all duration-300` or `duration-500` for smooth changes
+*   **Hover Animations**:
+    *   Buttons: `hover:scale-105` with shadow increase
+    *   Cards: `hover:-translate-y-1` (lift) or `hover:rotate-1` (subtle tilt)
+    *   Stats: `group-hover:scale-110` on numbers
+    *   Images: `hover:scale-105` with 700ms duration for slow reveal
+    *   Icon containers: Background color fill transition
+*   **Active States**: `active:scale-95` on buttons for tactile press feedback
+*   **Entrance/Exit**: Details accordion uses native `open:` state with chevron rotation
+*   **Image Overlays**: Fade overlays on hover (blog cards) using `group-hover:bg-transparent`
+*   **No Harsh Snaps**: All transitions eased, duration 300-700ms range for organic feel
 
-### Motion Philosophy
-Fast, snappy, mechanical. No bouncy or organic easing.
 
-**Transition Classes:**
-```tsx
-"transition-all duration-200 ease-out"
-"transition-colors duration-200"
-```
+## 8. Accessibility
+*   **Contrast Ratios**:
+    *   Primary text (#2C2C24) on background (#FDFCF8): 14.5:1 (AAA)
+    *   Moss (#5D7052) on background: 6.2:1 (AA)
+    *   Muted text (#78786C) on background: 4.8:1 (AA)
+*   **Focus States**: `focus-visible:ring-2 ring-[#5D7052] ring-offset-2` provides clear, soft focus indicator
+*   **Touch Targets**: All interactive elements meet 44px minimum (buttons h-12 = 48px)
+*   **Semantic HTML**: Proper heading hierarchy, nav landmarks, alt text for images, aria-labels where needed
+*   **Keyboard Navigation**: All interactive elements keyboard accessible, details/summary for FAQ accordion
 
-**Hover Behaviors:**
-1. **Color Inversion:** Buttons, icons flip between black/white instantly
-2. **Hard Shadows:** Cards gain offset shadow + slight translate
-3. **Underlines:** Links gain thick underline (`decoration-2 decoration-[#CC0000]`)
-4. **Scale:** Small elements like dots can `hover:scale-150`
-5. **Background:** Containers get subtle grey background (`hover:bg-neutral-100`)
-
-**No Floating:** Elements don't "lift" with soft shadows. They snap into place with hard shadows.
-
-**Accordion Animation:**
-```tsx
-className="grid transition-all duration-300 ease-in-out"
-// Open: grid-rows-[1fr] opacity-100
-// Closed: grid-rows-[0fr] opacity-0
-```
-
-### Micro-Interactions
-- FAQ plus icons rotate 45° when open
-- Blog card images scale 105% on hover
-- Feature icon boxes invert colors on hover
-- Navigation links turn red on hover
-
-## 7. Spacing, Layout & Iconography
-
-### Default Max-Width
-`max-w-screen-xl` (1280px) for primary content container.
-
-### Spacing System
-Use an 8px grid system. Common values:
-- Tight: `gap-2` (8px), `p-2` (8px)
-- Standard: `gap-4` (16px), `p-4` (16px)
-- Comfortable: `gap-8` (32px), `p-8` (32px)
-- Spacious: `gap-16` (64px), `py-16` (64px)
-
-**Mobile:** Reduce by one step (e.g., `p-8` → `p-6`)
-
-### Iconography
-**Integration:**
-- Icons inside bordered boxes (feature cards)
-- Icons as section markers (small squares, bullets)
-- Icons in navigation (minimal use)
-- Icons in social links (bordered boxes in footer)
-
-**Style Consistency:**
-- All icons from `lucide-react`
-- Consistent stroke width (`stroke-1`)
-- Black color by default, white in inverted sections
-
-## 8. Responsive Strategy
-
-### Breakpoints
-- Mobile: `< 768px` (default)
-- Tablet: `md:` (768px+)
-- Desktop: `lg:` (1024px+)
-
-### Mobile Adaptations
-1. **Grid Collapse:**
-   Multi-column grids collapse to single column (`grid-cols-1`)
-
-2. **Border Removal:**
-   Remove `border-r` on mobile, keep `border-b` for horizontal separators
-   ```css
-   @media (max-width: 767px) {
-     .grid-border-r { border-right: none; }
-   }
-   ```
-
-3. **Typography Scaling:**
-   Headlines shrink dramatically: `text-5xl` → `text-6xl` → `text-9xl`
-
-4. **Padding Reduction:**
-   `p-16` → `p-8` → `p-6` on smaller screens
-
-5. **Touch Targets:**
-   All interactive elements minimum `44x44px` (`min-h-[44px] min-w-[44px]`)
-
-6. **CTA Buttons:**
-   Full width on mobile (`w-full md:w-auto`)
-
-7. **Navigation:**
-   Show hamburger menu icon on mobile (44px tap target)
-   Hide main nav links, show mobile menu
-
-### Maintaining Aesthetic
-Even on mobile, preserve:
-- Sharp corners (zero radius)
-- High contrast
-- Grid-based layout (just single column)
-- Horizontal rule separators between sections
-- Uppercase labels and metadata
-
-## 9. Accessibility & Best Practices
-
-### Contrast Ratios
-- Black `#111111` on Off-White `#F9F9F7`: **AAA compliant** (>17:1)
-- Red `#CC0000` on Off-White: **AA compliant** (>5:1)
-- Never put red text on black background
-
-### Focus States
-```tsx
-"focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-950 focus-visible:ring-offset-2"
-```
-- Thick black ring (2px)
-- 2px offset for visibility
-- Only visible when using keyboard navigation (`:focus-visible`)
-
-### Semantic HTML
-- Use `<header>`, `<nav>`, `<section>`, `<footer>`
-- Use `<h1>` through `<h6>` in proper hierarchy
-- Use `<button>` for interactive elements, not divs
-- Use `<a>` for links with proper `href`
-
-### ARIA Labels
-- Add `aria-label` to icon-only buttons
-- Add `alt` text to all images (even decorative ones)
-- Add `role="img"` and `aria-labelledby` to SVG icons
-
-### Keyboard Navigation
-- All interactive elements must be keyboard accessible
-- Visible focus states (see above)
-- Accordion items use `button` with proper `aria-expanded`
-
-## 10. Implementation Constraints
-
-### Font Import
-Use `@import` in inline `<style>` tag:
-```css
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,900;1,400&family=Lora:ital,wght@0,400;0,600;1,400&display=block');
-```
-
-Define font classes:
-```css
-.font-serif { font-family: 'Playfair Display', serif; }
-.font-body { font-family: 'Lora', serif; }
-.font-sans { font-family: 'Inter', sans-serif; }
-.font-mono { font-family: 'JetBrains Mono', monospace; }
-```
-
-### Tailwind Utilities
-Create custom utilities in `<style>` block:
-- `.sharp-corners { border-radius: 0px !important; }`
-- `.newsprint-texture { ... }` (see Textures section)
-- `.hard-shadow-hover:hover { ... }` (see Effects section)
-
-### Border Collapse Logic
-To avoid double borders in grids:
-1. Use `border-l` and `border-t` on the container
-2. Use `border-r` and `border-b` on children
-3. Remove `border-r` on last column
-4. Remove `border-b` on last row (if needed)
-
-### Component Structure (React 19+)
-- Use ref as prop, not `forwardRef`
-- Use `class-variance-authority` for button/card variants
-- Use `tailwind-merge` to merge className props
-
-### Performance
-- Lazy load images below the fold
-- Use `transform` and `opacity` for animations (GPU accelerated)
-- Avoid animating `box-shadow` directly (use `will-change` if needed)
+## 9. Responsive Strategy
+*   **Mobile-First Approach**: Base styles mobile-optimized, enhanced at breakpoints
+*   **Breakpoint Usage**:
+    *   `sm:` (640px): Horizontal padding increases, some flex-row layouts
+    *   `md:` (768px): Major grid transitions (2-3 columns), nav reveals desktop version
+    *   `lg:` (1024px): 3-column grids, 2-column hero/benefits layouts
+*   **Typography Scaling**: Hero headline `text-5xl md:text-7xl`, sections `text-4xl md:text-5xl`
+*   **Stack Behavior**: All grids collapse to single column on mobile, flex layouts switch to `flex-col`
+*   **Navigation**: Mobile uses hamburger menu with slide-out panel, desktop inline nav
+*   **Blob Simplification**: Blobs remain but overflow hidden on mobile to prevent layout issues
 </design-system>
