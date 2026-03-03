@@ -313,6 +313,7 @@ export async function POST(request: Request) {
         .from("component-thumbnails")
         .upload(thumbnailPath, validationResult.data.thumbnailFile, {
           contentType: validationResult.data.thumbnailMimeType,
+          cacheControl: "31536000",
           upsert: false,
         }),
       supabase.storage
