@@ -3,7 +3,19 @@ import { redirect } from "next/navigation";
 
 import { requireAdmin } from "@/lib/auth/require-admin";
 
-import { UploadForm } from "./UploadForm";
+import { ComponentsManager } from "./ComponentsManager";
+
+const ADMIN_COMPONENT_LIST_LIMIT = 50;
+
+type StoredComponent = {
+  id: string;
+  title: string;
+  category: string;
+  thumbnail_path: string;
+  file_path: string;
+  created_at: string;
+  updated_at: string;
+};
 
 export default async function AdminUploadPage() {
   const adminResult = await requireAdmin();
@@ -47,14 +59,33 @@ export default async function AdminUploadPage() {
     );
   }
 
+  const { data: initialComponentsData, error: initialComponentsError } = await adminResult.supabase
+    .from("shopify_components")
+    .select("id, title, category, thumbnail_path, file_path, created_at, updated_at")
+    .order("created_at", { ascending: false })
+    .limit(ADMIN_COMPONENT_LIST_LIMIT);
+
   return (
     <main className="mx-auto min-h-dvh w-full max-w-5xl px-6 py-12">
       <section className="rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm">
-        <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">Upload Component</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">Component Admin Panel</h1>
         <p className="mt-2 text-sm text-zinc-600">
           Signed in as <span className="font-medium">{adminResult.user.email ?? adminResult.user.id}</span>
         </p>
-        <UploadForm />
+        {initialComponentsError ? (
+          <div
+            role="status"
+            aria-live="polite"
+            className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800"
+          >
+            Existing components could not be preloaded. Use <span className="font-medium">Refresh List</span>{" "}
+            below after the page loads.
+          </div>
+        ) : null}
+        <ComponentsManager
+          initialComponents={(initialComponentsData ?? []) as StoredComponent[]}
+          listLimit={ADMIN_COMPONENT_LIST_LIMIT}
+        />
       </section>
     </main>
   );

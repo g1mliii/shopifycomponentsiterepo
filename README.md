@@ -41,6 +41,23 @@ This repo uses Supabase MCP project setup instead of `supabase login` / `supabas
 - Client-side app access should use only `NEXT_PUBLIC_SUPABASE_URL` + publishable/anon key and rely on RLS + authenticated user JWT.
 - Use `SUPABASE_SERVICE_ROLE_KEY` only for privileged server-side jobs (for example admin bootstrap, secure maintenance scripts, or protected server routes/functions).
 
+## Storage Reconciliation Cron
+
+This project includes a daily reconciliation safety net for storage drift:
+
+- Edge Function: `component-storage-reconcile`
+- Cron job: `component-storage-reconcile-daily` (runs once per day at `00:17 UTC`)
+- SQL helpers:
+  - `public.component_rows_with_missing_storage(p_limit integer default 100)`
+  - `public.component_storage_orphans(p_limit integer default 200)`
+
+The cron job invokes the Edge Function via `pg_net`, with secrets read from Supabase Vault:
+
+- `project_url`
+- `service_role_key`
+
+If these Vault secrets are missing in a new environment, create them before relying on cron execution.
+
 ## Baseline Commands
 
 ```bash

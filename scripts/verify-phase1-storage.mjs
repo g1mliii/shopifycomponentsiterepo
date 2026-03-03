@@ -46,6 +46,7 @@ async function main() {
   const liquidPath = `phase1-runtime/${runId}.liquid`;
 
   let cleanupErrors = [];
+  let primaryError = null;
 
   try {
     const thumbnailPayload = Buffer.from("phase1 thumbnail verification payload", "utf8");
@@ -107,6 +108,8 @@ async function main() {
     );
 
     console.log("phase1 runtime verification passed");
+  } catch (error) {
+    primaryError = error;
   } finally {
     const { error: thumbnailCleanupError } = await serviceClient.storage
       .from("component-thumbnails")
@@ -121,10 +124,17 @@ async function main() {
     if (liquidCleanupError) {
       cleanupErrors.push(`Liquid cleanup failed: ${liquidCleanupError.message}`);
     }
+  }
 
+  if (primaryError) {
     if (cleanupErrors.length > 0) {
-      throw new Error(cleanupErrors.join(" | "));
+      console.error(`cleanup warnings after primary failure: ${cleanupErrors.join(" | ")}`);
     }
+    throw primaryError;
+  }
+
+  if (cleanupErrors.length > 0) {
+    throw new Error(cleanupErrors.join(" | "));
   }
 }
 

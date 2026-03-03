@@ -71,6 +71,16 @@ test("unauthenticated request to upload API is rejected", async ({ request }) =>
   expect(body.error?.code).toBe("unauthenticated");
 });
 
+test("unauthenticated request to delete API is rejected", async ({ request }) => {
+  const response = await request.delete(
+    "/api/admin/components?id=11111111-1111-1111-1111-111111111111",
+  );
+
+  expect(response.status()).toBe(401);
+  const body = (await response.json()) as { error?: { code?: string } };
+  expect(body.error?.code).toBe("unauthenticated");
+});
+
 test("authenticated non-admin is blocked in UI and API", async ({ page }) => {
   if (!usersContext) {
     return;
@@ -99,6 +109,13 @@ test("authenticated non-admin is blocked in UI and API", async ({ page }) => {
   expect(response.status()).toBe(403);
   const body = (await response.json()) as { error?: { code?: string } };
   expect(body.error?.code).toBe("forbidden");
+
+  const deleteResponse = await page.request.delete(
+    "/api/admin/components?id=11111111-1111-1111-1111-111111111111",
+  );
+  expect(deleteResponse.status()).toBe(403);
+  const deleteBody = (await deleteResponse.json()) as { error?: { code?: string } };
+  expect(deleteBody.error?.code).toBe("forbidden");
 });
 
 test("admin upload succeeds and persists storage + db paths", async ({ page }) => {
@@ -107,7 +124,7 @@ test("admin upload succeeds and persists storage + db paths", async ({ page }) =
   }
 
   await loginAs(page, usersContext.adminEmail, usersContext.adminPassword);
-  await expect(page.getByRole("heading", { name: /upload component/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /component admin panel/i })).toBeVisible();
 
   const uploadResponsePromise = page.waitForResponse(
     (response) =>
@@ -182,6 +199,40 @@ test("admin upload succeeds and persists storage + db paths", async ({ page }) =
     )}`;
     const liquidResponse = await fetch(liquidPublicUrl);
     expect(liquidResponse.status).toBeGreaterThanOrEqual(400);
+
+    const listResponse = await page.request.get("/api/admin/components");
+    expect(listResponse.status()).toBe(200);
+    const listBody = (await listResponse.json()) as {
+      requestId: string;
+      components: Array<{ id: string }>;
+    };
+    expect(listBody.components.some((component) => component.id === componentId)).toBe(true);
+
+    const deleteResponse = await page.request.delete(
+      `/api/admin/components?id=${encodeURIComponent(componentId)}`,
+    );
+    expect(deleteResponse.status()).toBe(200);
+
+    const { data: deletedRowRaw, error: deletedRowError } = await usersContext.serviceClient
+      .from("shopify_components")
+      .select("id")
+      .eq("id", componentId)
+      .maybeSingle();
+
+    expect(deletedRowError).toBeNull();
+    expect(deletedRowRaw).toBeNull();
+
+    const { data: deletedThumbnail, error: deletedThumbnailError } = await usersContext.serviceClient.storage
+      .from("component-thumbnails")
+      .download(thumbnailPath);
+    expect(deletedThumbnail).toBeNull();
+    expect(deletedThumbnailError).not.toBeNull();
+
+    const { data: deletedLiquid, error: deletedLiquidError } = await usersContext.serviceClient.storage
+      .from("liquid-files")
+      .download(liquidPath);
+    expect(deletedLiquid).toBeNull();
+    expect(deletedLiquidError).not.toBeNull();
   } finally {
     await usersContext.serviceClient.from("shopify_components").delete().eq("id", componentId);
     await usersContext.serviceClient.storage.from("component-thumbnails").remove([thumbnailPath]);

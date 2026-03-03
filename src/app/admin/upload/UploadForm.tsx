@@ -25,7 +25,11 @@ type UploadErrorResponse = {
   };
 };
 
-export function UploadForm() {
+type UploadFormProps = {
+  onUploaded?: (component: UploadedComponent) => void;
+};
+
+export function UploadForm({ onUploaded }: UploadFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [requestId, setRequestId] = useState<string | null>(null);
@@ -87,6 +91,7 @@ export function UploadForm() {
 
       setUploadedComponent(body.component);
       setRequestId(body.requestId);
+      onUploaded?.(body.component);
       form.reset();
     } catch (error) {
       if (!isMountedRef.current) {

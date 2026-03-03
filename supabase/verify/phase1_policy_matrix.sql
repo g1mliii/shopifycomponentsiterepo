@@ -307,6 +307,57 @@ begin
 end
 $$;
 
+-- Storage delete policy shape verification.
+-- Keep this strict: must be bucket constraint AND admin check, not OR.
+do $$
+declare
+  thumb_delete_qual text;
+  liquid_delete_qual text;
+  thumb_delete_qual_normalized text;
+  liquid_delete_qual_normalized text;
+begin
+  select qual
+  into thumb_delete_qual
+  from pg_policies
+  where schemaname = 'storage'
+    and tablename = 'objects'
+    and policyname = 'storage_component_thumbnails_admin_delete'
+    and cmd = 'DELETE'
+    and roles @> array['authenticated']::name[];
+
+  if thumb_delete_qual is null then
+    raise exception 'missing storage DELETE policy: storage_component_thumbnails_admin_delete';
+  end if;
+
+  thumb_delete_qual_normalized := regexp_replace(lower(thumb_delete_qual), '\s+', '', 'g');
+  if thumb_delete_qual_normalized !~ '^\(\(bucket_id=''component-thumbnails''::text\)and\(select(public\.)?is_admin\(\)asis_admin\)\)$' then
+    raise exception
+      'unexpected storage_component_thumbnails_admin_delete expression shape: %',
+      thumb_delete_qual;
+  end if;
+
+  select qual
+  into liquid_delete_qual
+  from pg_policies
+  where schemaname = 'storage'
+    and tablename = 'objects'
+    and policyname = 'storage_liquid_files_admin_delete'
+    and cmd = 'DELETE'
+    and roles @> array['authenticated']::name[];
+
+  if liquid_delete_qual is null then
+    raise exception 'missing storage DELETE policy: storage_liquid_files_admin_delete';
+  end if;
+
+  liquid_delete_qual_normalized := regexp_replace(lower(liquid_delete_qual), '\s+', '', 'g');
+  if liquid_delete_qual_normalized !~ '^\(\(bucket_id=''liquid-files''::text\)and\(select(public\.)?is_admin\(\)asis_admin\)\)$' then
+    raise exception
+      'unexpected storage_liquid_files_admin_delete expression shape: %',
+      liquid_delete_qual;
+  end if;
+end
+$$;
+
 -- Anon can read public thumbnail object metadata.
 reset role;
 set local role anon;
