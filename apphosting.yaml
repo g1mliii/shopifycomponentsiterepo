@@ -3,16 +3,5 @@ runConfig:
   maxInstances: 2
 
 env:
-  - variable: NEXT_PUBLIC_SUPABASE_URL
-    availability:
-      - BUILD
-      - RUNTIME
-  - variable: NEXT_PUBLIC_SUPABASE_ANON_KEY
-    availability:
-      - BUILD
-      - RUNTIME
-  - variable: APP_ORIGIN
-    availability:
-      - RUNTIME
   - variable: SUPABASE_SERVICE_ROLE_KEY
     secret: SUPABASE_SERVICE_ROLE_KEY

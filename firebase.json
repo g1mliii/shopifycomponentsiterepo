@@ -1,6 +1,14 @@
 {
-  "apphosting": {
-    "backendId": "shopifycomponents",
-    "rootDir": "."
-  }
+  "apphosting": [
+    {
+      "backendId": "shopifycomponents",
+      "rootDir": ".",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log"
+      ]
+    }
+  ]
 }

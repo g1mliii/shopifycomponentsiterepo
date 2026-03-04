@@ -79,6 +79,48 @@ const nextConfig: NextConfig = {
       ...(supabaseImagePattern ? [supabaseImagePattern] : []),
     ],
   },
+  async redirects() {
+    return [
+      {
+        source: "/admin",
+        destination: "/admin/login",
+        permanent: false,
+      },
+      {
+        source: "/adminupload",
+        destination: "/admin/upload",
+        permanent: false,
+      },
+    ];
+  },
+  async rewrites() {
+    return [
+      {
+        source: "/apple-touch-icon.png",
+        destination: "/favicon.ico",
+      },
+      {
+        source: "/apple-touch-icon-precomposed.png",
+        destination: "/favicon.ico",
+      },
+      {
+        source: "/site.webmanifest",
+        destination: "/manifest.webmanifest",
+      },
+      {
+        source: "/icon.png",
+        destination: "/favicon.ico",
+      },
+      {
+        source: "/icon-192.png",
+        destination: "/favicon.ico",
+      },
+      {
+        source: "/icon-512.png",
+        destination: "/favicon.ico",
+      },
+    ];
+  },
   async headers() {
     return [
       {
