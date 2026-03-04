@@ -41,7 +41,7 @@ test("parseLiquidSchema parses settings, blocks, and support levels", () => {
   assert.equal(result.schema?.blocks.length, 1);
   assert.equal(result.schema?.presets.length, 1);
   assert.equal(result.schema?.settings[0]?.support, "native");
-  assert.equal(result.schema?.settings[1]?.support, "simulated");
+  assert.equal(result.schema?.settings[1]?.support, "native");
   assert.equal(result.diagnostics.filter((entry) => entry.level === "error").length, 0);
 });
 
@@ -74,4 +74,21 @@ test("parseLiquidSchema ignores header and paragraph pseudo-settings without id 
     result.diagnostics.some((entry) => entry.code === "missing_setting_id"),
     false,
   );
+});
+
+test("parseLiquidSchema treats future_setting_type as a supported text-like control", () => {
+  const source = `{% schema %}
+{
+  "name": "Future setting support",
+  "settings": [
+    { "type": "future_setting_type", "id": "future_toggle", "label": "Future Toggle", "default": "experimental" }
+  ]
+}
+{% endschema %}`;
+
+  const result = parseLiquidSchema(source);
+
+  assert.ok(result.schema);
+  assert.equal(result.schema?.settings.length, 1);
+  assert.equal(result.schema?.settings[0]?.support, "native");
 });

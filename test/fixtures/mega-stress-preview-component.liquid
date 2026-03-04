@@ -225,11 +225,18 @@
       {% endif %}
     </div>
 
-    {% if section.settings.hero_link != blank and section.settings.hero_link_label != blank %}
-      <a href="{{ section.settings.hero_link }}" class="pp-card" style="text-decoration:none;color:inherit;">
-        <strong>{{ section.settings.hero_link_label }}</strong>
-        <span>Open link</span>
-      </a>
+    {% if section.settings.hero_link_label != blank %}
+      {% if section.settings.hero_link != blank %}
+        <a href="{{ section.settings.hero_link }}" class="pp-card" style="text-decoration:none;color:inherit;">
+          <strong>{{ section.settings.hero_link_label }}</strong>
+          <span>Open link</span>
+        </a>
+      {% else %}
+        <div class="pp-card" role="button" aria-disabled="true">
+          <strong>{{ section.settings.hero_link_label }}</strong>
+          <span>Add hero link URL to activate</span>
+        </div>
+      {% endif %}
     {% endif %}
 
     {% if section.settings.enable_marquee %}
@@ -259,8 +266,12 @@
               {% if block.settings.body != blank %}
                 <div class="pp-richtext">{{ block.settings.body }}</div>
               {% endif %}
-              {% if block.settings.cta_label != blank and block.settings.cta_url != blank %}
-                <a href="{{ block.settings.cta_url }}">{{ block.settings.cta_label }}</a>
+              {% if block.settings.cta_label != blank %}
+                {% if block.settings.cta_url != blank %}
+                  <a href="{{ block.settings.cta_url }}">{{ block.settings.cta_label }}</a>
+                {% else %}
+                  <span role="button" aria-disabled="true">{{ block.settings.cta_label }}</span>
+                {% endif %}
               {% endif %}
             </article>
 
@@ -315,8 +326,12 @@
             <article class="pp-card" {{ block.shopify_attributes }}>
               <h3>{{ block.settings.title }}</h3>
               <p>{{ block.settings.copy }}</p>
-              {% if block.settings.url != blank and block.settings.label != blank %}
-                <a href="{{ block.settings.url }}">{{ block.settings.label }}</a>
+              {% if block.settings.label != blank %}
+                {% if block.settings.url != blank %}
+                  <a href="{{ block.settings.url }}">{{ block.settings.label }}</a>
+                {% else %}
+                  <span role="button" aria-disabled="true">{{ block.settings.label }}</span>
+                {% endif %}
               {% endif %}
             </article>
 

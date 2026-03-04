@@ -15,7 +15,11 @@ import type {
 const SCHEMA_BLOCK_PATTERN = /{%\s*schema\s*%}([\s\S]*?){%\s*endschema\s*%}/i;
 
 const NATIVE_SETTING_TYPES = new Set([
+  "article",
+  "blog",
   "checkbox",
+  "collection",
+  "collection_list",
   "color",
   "color_background",
   "color_scheme",
@@ -23,7 +27,13 @@ const NATIVE_SETTING_TYPES = new Set([
   "html",
   "inline_richtext",
   "liquid",
+  "link_list",
+  "metaobject",
+  "metaobject_list",
   "number",
+  "page",
+  "product",
+  "product_list",
   "radio",
   "range",
   "richtext",
@@ -35,20 +45,10 @@ const NATIVE_SETTING_TYPES = new Set([
   "video",
   "video_url",
   "image_picker",
+  "future_setting_type",
 ]);
 
-const SIMULATED_SETTING_TYPES = new Set([
-  "article",
-  "blog",
-  "collection",
-  "collection_list",
-  "link_list",
-  "metaobject",
-  "metaobject_list",
-  "page",
-  "product",
-  "product_list",
-]);
+const SIMULATED_SETTING_TYPES = new Set<string>();
 
 const NON_CONTROL_SETTING_TYPES = new Set(["header", "paragraph"]);
 

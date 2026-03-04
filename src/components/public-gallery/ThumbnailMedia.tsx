@@ -191,8 +191,11 @@ export function ThumbnailMedia({ alt, src, mediaKind, imageLoading = "lazy" }: T
   return (
     <div
       ref={containerRef}
-      className="relative aspect-[4/3] w-full overflow-hidden rounded-xl bg-zinc-100"
-      style={{ contain: "layout paint style" }}
+      className="relative aspect-[4/3] w-full overflow-hidden rounded-xl"
+      style={{
+        contain: "layout paint style",
+        background: "var(--color-stone)",
+      }}
     >
       {mediaKind === "image" && !imageFailed ? (
         <Image
@@ -209,7 +212,10 @@ export function ThumbnailMedia({ alt, src, mediaKind, imageLoading = "lazy" }: T
           }}
         />
       ) : mediaKind === "image" ? (
-        <div className="flex h-full w-full items-center justify-center text-xs font-medium uppercase tracking-wide text-zinc-500">
+        <div
+          className="flex h-full w-full items-center justify-center text-xs font-medium uppercase tracking-wide"
+          style={{ color: "var(--color-muted-fg)" }}
+        >
           Preview unavailable
         </div>
       ) : isVideoActive ? (
@@ -224,7 +230,10 @@ export function ThumbnailMedia({ alt, src, mediaKind, imageLoading = "lazy" }: T
           src={src}
         />
       ) : (
-        <div className="flex h-full w-full items-center justify-center text-xs font-medium uppercase tracking-wide text-zinc-500">
+        <div
+          className="flex h-full w-full items-center justify-center text-xs font-medium uppercase tracking-wide"
+          style={{ color: "var(--color-muted-fg)" }}
+        >
           Video preview
         </div>
       )}

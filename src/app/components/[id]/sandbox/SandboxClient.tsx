@@ -1,8 +1,5 @@
 "use client";
-
-import Link from "next/link";
 import {
-  memo,
   useCallback,
   useEffect,
   useMemo,
@@ -14,15 +11,29 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 
+import { SandboxHeader } from "./SandboxHeader";
+import { SandboxWorkspace } from "./SandboxWorkspace";
+import {
+  MAX_SPLIT_PERCENT,
+  MIN_SPLIT_PERCENT,
+  KEYBOARD_SPLIT_STEP_PERCENT,
+  PREVIEW_ENQUEUE_DEBOUNCE_MS,
+  applyMediaOverrides,
+  buildPreviewDocument,
+  clampSplitPercent,
+  createAbortError,
+  parseSettingPath,
+  toTitleSlug,
+} from "./sandbox-helpers";
+
 import type { PublicComponentById } from "@/lib/components/component-by-id";
-import { formatUtcTimestamp } from "@/lib/datetime/format-utc-timestamp";
 import { parseLiquidSchema } from "@/lib/liquid/schema-parse";
-import { getSettingControlSpec } from "@/lib/liquid/schema-controls";
 import {
   buildInitialEditorState,
   createBlockInstanceFromDefinition,
   patchLiquidSchemaDefaults,
 } from "@/lib/liquid/schema-patch";
+import { buildSettingLookup } from "@/lib/liquid/visibility-hints";
 import { LatestPreviewScheduler } from "@/lib/liquid/preview-scheduler";
 import { renderLiquidPreview, type LiquidRenderResult } from "@/lib/liquid/render";
 import type {
@@ -33,11 +44,7 @@ import type {
   LiquidSettingJsonValue,
 } from "@/lib/liquid/schema-types";
 
-const MIN_SPLIT_PERCENT = 30;
-const MAX_SPLIT_PERCENT = 70;
 const MAX_RENDER_SAMPLES = 60;
-const KEYBOARD_SPLIT_STEP_PERCENT = 4;
-const PREVIEW_ENQUEUE_DEBOUNCE_MS = 80;
 
 type SandboxClientProps = {
   component: PublicComponentById;
@@ -54,784 +61,6 @@ type RenderInput = {
   state: LiquidEditorState;
 };
 
-type SettingControlProps = {
-  setting: LiquidSchemaSetting;
-  value: LiquidSettingJsonValue;
-  pathKey: string;
-  onChange: (pathKey: string, nextValue: LiquidSettingJsonValue) => void;
-  onSelectLocalMedia: (pathKey: string, file: File | null) => void;
-};
-
-function toInputValue(value: LiquidSettingJsonValue): string {
-  if (typeof value === "string") {
-    return value;
-  }
-
-  if (typeof value === "number" || typeof value === "boolean") {
-    return String(value);
-  }
-
-  if (value === null) {
-    return "";
-  }
-
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return "";
-  }
-}
-
-function isRecordValue(value: LiquidSettingJsonValue): value is Record<string, LiquidSettingJsonValue> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function toStringArray(value: LiquidSettingJsonValue): string[] {
-  if (Array.isArray(value)) {
-    return value
-      .map((entry) => (typeof entry === "string" ? entry.trim() : toInputValue(entry).trim()))
-      .filter((entry) => entry.length > 0);
-  }
-
-  if (typeof value === "string") {
-    return value
-      .split(/[\n,]/)
-      .map((entry) => entry.trim())
-      .filter((entry) => entry.length > 0);
-  }
-
-  return [];
-}
-
-type SimulatedResourceShape = {
-  handle: string;
-  title: string;
-  url: string;
-};
-
-type SimulatedMetaobjectShape = {
-  type: string;
-  handle: string;
-  id: string;
-};
-
-type SimulatedMenuShape = {
-  handle: string;
-  links: string[];
-};
-
-const SIMULATED_RESOURCE_HANDLE_PLACEHOLDERS: Record<string, string> = {
-  article: "articles/example-article",
-  blog: "blogs/example-blog",
-  collection: "collections/example-collection",
-  page: "pages/example-page",
-  product: "products/example-product",
-};
-
-const SIMULATED_RESOURCE_LIST_PLACEHOLDERS: Record<string, string> = {
-  collection_list: "collections/my-collection",
-  metaobject_list: "custom.sample/my-entry",
-  product_list: "products/my-product",
-};
-
-function getResourceHandlePlaceholder(settingType: string): string {
-  return SIMULATED_RESOURCE_HANDLE_PLACEHOLDERS[settingType] ?? "resources/example-handle";
-}
-
-function getResourceListPlaceholder(settingType: string, setting: LiquidSchemaSetting): string {
-  if (settingType === "metaobject_list") {
-    return `${getMetaobjectTypeFromSetting(setting)}/my-entry`;
-  }
-
-  return SIMULATED_RESOURCE_LIST_PLACEHOLDERS[settingType] ?? "resources/my-handle";
-}
-
-function getMetaobjectTypeFromSetting(setting: LiquidSchemaSetting): string {
-  const rawMetaobjectType = setting.raw.metaobject_type;
-  if (typeof rawMetaobjectType !== "string") {
-    return "custom.sample";
-  }
-
-  const normalized = rawMetaobjectType.trim();
-  return normalized.length > 0 ? normalized : "custom.sample";
-}
-
-function toSelectFallbackLabel(value: string): string {
-  return value
-    .replace(/[_-]+/g, " ")
-    .trim()
-    .replace(/\b[a-z]/g, (character) => character.toUpperCase());
-}
-
-function toSimulatedResourceShape(value: LiquidSettingJsonValue): SimulatedResourceShape {
-  if (isRecordValue(value)) {
-    return {
-      handle: typeof value.handle === "string" ? value.handle : "",
-      title: typeof value.title === "string" ? value.title : "",
-      url: typeof value.url === "string" ? value.url : "",
-    };
-  }
-
-  if (typeof value === "string") {
-    return {
-      handle: value,
-      title: "",
-      url: "",
-    };
-  }
-
-  return {
-    handle: "",
-    title: "",
-    url: "",
-  };
-}
-
-function toSimulatedMetaobjectShape(value: LiquidSettingJsonValue): SimulatedMetaobjectShape {
-  if (isRecordValue(value)) {
-    return {
-      type: typeof value.type === "string" ? value.type : "",
-      handle: typeof value.handle === "string" ? value.handle : "",
-      id: typeof value.id === "string" ? value.id : "",
-    };
-  }
-
-  return {
-    type: "",
-    handle: "",
-    id: "",
-  };
-}
-
-function toSimulatedMenuShape(value: LiquidSettingJsonValue): SimulatedMenuShape {
-  if (isRecordValue(value)) {
-    const linksValue = value.links;
-    return {
-      handle: typeof value.handle === "string" ? value.handle : "",
-      links: Array.isArray(linksValue) ? toStringArray(linksValue as LiquidSettingJsonValue) : [],
-    };
-  }
-
-  if (typeof value === "string") {
-    return {
-      handle: value,
-      links: [],
-    };
-  }
-
-  return {
-    handle: "",
-    links: [],
-  };
-}
-
-type SimulatedEditorProps = {
-  setting: LiquidSchemaSetting;
-  pathKey: string;
-  value: LiquidSettingJsonValue;
-  onChange: (pathKey: string, nextValue: LiquidSettingJsonValue) => void;
-};
-
-const SimulatedResourceEditor = memo(function SimulatedResourceEditor({
-  setting,
-  pathKey,
-  value,
-  onChange,
-}: SimulatedEditorProps) {
-  const settingType = setting.type.toLowerCase();
-  const normalized = toSimulatedResourceShape(value);
-  const inputClass =
-    "mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500 focus-visible:ring-offset-1";
-
-  const apply = useCallback(
-    (patch: Partial<SimulatedResourceShape>) => {
-      onChange(pathKey, {
-        handle: patch.handle ?? normalized.handle,
-        title: patch.title ?? normalized.title,
-        url: patch.url ?? normalized.url,
-      });
-    },
-    [normalized.handle, normalized.title, normalized.url, onChange, pathKey],
-  );
-
-  return (
-    <div className="mt-2 rounded-lg border border-zinc-200 bg-zinc-50 p-3">
-      <label className="block text-xs font-medium uppercase tracking-wide text-zinc-600" htmlFor={`${pathKey}:handle`}>
-        Resource Handle / ID
-      </label>
-      <input
-        id={`${pathKey}:handle`}
-        type="text"
-        value={normalized.handle}
-        placeholder={getResourceHandlePlaceholder(settingType)}
-        onChange={(event) => apply({ handle: event.target.value })}
-        className={inputClass}
-      />
-      <label className="mt-2 block text-xs font-medium uppercase tracking-wide text-zinc-600" htmlFor={`${pathKey}:title`}>
-        Resource Title
-      </label>
-      <input
-        id={`${pathKey}:title`}
-        type="text"
-        value={normalized.title}
-        placeholder="Optional title for preview context"
-        onChange={(event) => apply({ title: event.target.value })}
-        className={inputClass}
-      />
-      <label className="mt-2 block text-xs font-medium uppercase tracking-wide text-zinc-600" htmlFor={`${pathKey}:url`}>
-        Resource URL
-      </label>
-      <input
-        id={`${pathKey}:url`}
-        type="url"
-        value={normalized.url}
-        placeholder="https://example.test/resource"
-        onChange={(event) => apply({ url: event.target.value })}
-        className={inputClass}
-      />
-      <p className="mt-2 text-xs text-zinc-600">Simulated picker values are stored as a lightweight object.</p>
-    </div>
-  );
-});
-
-const SimulatedMetaobjectEditor = memo(function SimulatedMetaobjectEditor({
-  setting,
-  pathKey,
-  value,
-  onChange,
-}: SimulatedEditorProps) {
-  const metaobjectType = getMetaobjectTypeFromSetting(setting);
-  const normalized = toSimulatedMetaobjectShape(value);
-  const inputClass =
-    "mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500 focus-visible:ring-offset-1";
-
-  const apply = useCallback(
-    (patch: Partial<SimulatedMetaobjectShape>) => {
-      onChange(pathKey, {
-        type: patch.type ?? normalized.type,
-        handle: patch.handle ?? normalized.handle,
-        id: patch.id ?? normalized.id,
-      });
-    },
-    [normalized.handle, normalized.id, normalized.type, onChange, pathKey],
-  );
-
-  return (
-    <div className="mt-2 rounded-lg border border-zinc-200 bg-zinc-50 p-3">
-      <label className="block text-xs font-medium uppercase tracking-wide text-zinc-600" htmlFor={`${pathKey}:type`}>
-        Metaobject Type
-      </label>
-      <input
-        id={`${pathKey}:type`}
-        type="text"
-        value={normalized.type}
-        placeholder={metaobjectType}
-        onChange={(event) => apply({ type: event.target.value })}
-        className={inputClass}
-      />
-      <label className="mt-2 block text-xs font-medium uppercase tracking-wide text-zinc-600" htmlFor={`${pathKey}:handle`}>
-        Handle
-      </label>
-      <input
-        id={`${pathKey}:handle`}
-        type="text"
-        value={normalized.handle}
-        placeholder="metaobject-handle"
-        onChange={(event) => apply({ handle: event.target.value })}
-        className={inputClass}
-      />
-      <label className="mt-2 block text-xs font-medium uppercase tracking-wide text-zinc-600" htmlFor={`${pathKey}:id`}>
-        ID
-      </label>
-      <input
-        id={`${pathKey}:id`}
-        type="text"
-        value={normalized.id}
-        placeholder="gid://shopify/Metaobject/123"
-        onChange={(event) => apply({ id: event.target.value })}
-        className={inputClass}
-      />
-      <p className="mt-2 text-xs text-zinc-600">Simulated metaobject values are editable for patch and preview tests.</p>
-    </div>
-  );
-});
-
-const SimulatedResourceListEditor = memo(function SimulatedResourceListEditor({
-  setting,
-  pathKey,
-  value,
-  onChange,
-}: SimulatedEditorProps) {
-  const settingType = setting.type.toLowerCase();
-  const draftPlaceholder = useMemo(
-    () => getResourceListPlaceholder(settingType, setting),
-    [setting, settingType],
-  );
-  const [draft, setDraft] = useState("");
-  const entries = toStringArray(value);
-  const inputClass =
-    "mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500 focus-visible:ring-offset-1";
-
-  const addDraft = useCallback(() => {
-    const normalized = draft.trim();
-    if (!normalized) {
-      return;
-    }
-
-    onChange(pathKey, [...entries, normalized]);
-    setDraft("");
-  }, [draft, entries, onChange, pathKey]);
-
-  return (
-    <div className="mt-2 rounded-lg border border-zinc-200 bg-zinc-50 p-3">
-      <label className="block text-xs font-medium uppercase tracking-wide text-zinc-600" htmlFor={`${pathKey}:draft`}>
-        Add Reference
-      </label>
-      <div className="mt-1 flex items-center gap-2">
-        <input
-          id={`${pathKey}:draft`}
-          type="text"
-          value={draft}
-          placeholder={draftPlaceholder}
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key !== "Enter") {
-              return;
-            }
-            event.preventDefault();
-            addDraft();
-          }}
-          className={inputClass}
-        />
-        <button
-          type="button"
-          onClick={addDraft}
-          className="inline-flex h-10 items-center rounded-lg border border-zinc-300 px-3 text-xs font-medium text-zinc-800 transition-colors hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500 focus-visible:ring-offset-1"
-        >
-          Add
-        </button>
-      </div>
-
-      {entries.length > 0 ? (
-        <ul className="mt-3 flex flex-wrap gap-2">
-          {entries.map((entry, index) => (
-            <li key={`${entry}-${index}`} className="inline-flex items-center gap-2 rounded-full border border-zinc-300 bg-white px-2 py-1 text-xs text-zinc-700">
-              <span>{entry}</span>
-              <button
-                type="button"
-                onClick={() => onChange(pathKey, entries.filter((_item, itemIndex) => itemIndex !== index))}
-                className="rounded px-1 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500"
-                aria-label={`Remove ${entry}`}
-              >
-                ×
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="mt-2 text-xs text-zinc-600">No references added yet.</p>
-      )}
-    </div>
-  );
-});
-
-const SimulatedMenuEditor = memo(function SimulatedMenuEditor({
-  pathKey,
-  value,
-  onChange,
-}: SimulatedEditorProps) {
-  const normalized = toSimulatedMenuShape(value);
-  const inputClass =
-    "mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500 focus-visible:ring-offset-1";
-
-  return (
-    <div className="mt-2 rounded-lg border border-zinc-200 bg-zinc-50 p-3">
-      <label className="block text-xs font-medium uppercase tracking-wide text-zinc-600" htmlFor={`${pathKey}:menu-handle`}>
-        Menu Handle
-      </label>
-      <input
-        id={`${pathKey}:menu-handle`}
-        type="text"
-        value={normalized.handle}
-        placeholder="main-menu"
-        onChange={(event) =>
-          onChange(pathKey, {
-            ...normalized,
-            handle: event.target.value,
-          })
-        }
-        className={inputClass}
-      />
-
-      <label className="mt-2 block text-xs font-medium uppercase tracking-wide text-zinc-600" htmlFor={`${pathKey}:menu-links`}>
-        Mock Links (comma or newline separated)
-      </label>
-      <textarea
-        id={`${pathKey}:menu-links`}
-        value={normalized.links.join("\n")}
-        rows={3}
-        onChange={(event) =>
-          onChange(pathKey, {
-            ...normalized,
-            links: toStringArray(event.target.value),
-          })
-        }
-        className={inputClass}
-      />
-      <p className="mt-2 text-xs text-zinc-600">Menu links remain simulated in this standalone sandbox.</p>
-    </div>
-  );
-});
-
-function toTitleSlug(value: string): string {
-  const normalized = value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-  return normalized.length > 0 ? normalized.slice(0, 64) : "component";
-}
-
-function buildPreviewDocument(html: string): string {
-  return `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <style>
-      :root { color-scheme: light; }
-      body {
-        margin: 0;
-        padding: 16px;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-        color: #111827;
-        background: #ffffff;
-      }
-      img, video { max-width: 100%; height: auto; }
-    </style>
-  </head>
-  <body>${html}</body>
-</html>`;
-}
-
-function createAbortError(): Error {
-  const error = new Error("Preview render aborted.");
-  error.name = "AbortError";
-  return error;
-}
-
-function clampSplitPercent(value: number): number {
-  if (!Number.isFinite(value)) {
-    return MIN_SPLIT_PERCENT;
-  }
-
-  return Math.min(MAX_SPLIT_PERCENT, Math.max(MIN_SPLIT_PERCENT, value));
-}
-
-function getSectionSettingPath(settingId: string): string {
-  return `section:${settingId}`;
-}
-
-function getBlockSettingPath(blockId: string, settingId: string): string {
-  return `block:${blockId}:${settingId}`;
-}
-
-function parseSettingPath(pathKey: string):
-  | { kind: "section"; settingId: string }
-  | { kind: "block"; blockId: string; settingId: string }
-  | null {
-  if (pathKey.startsWith("section:")) {
-    return {
-      kind: "section",
-      settingId: pathKey.slice("section:".length),
-    };
-  }
-
-  if (pathKey.startsWith("block:")) {
-    const segments = pathKey.split(":");
-    if (segments.length >= 3) {
-      return {
-        kind: "block",
-        blockId: segments[1] ?? "",
-        settingId: segments.slice(2).join(":"),
-      };
-    }
-  }
-
-  return null;
-}
-
-function applyMediaOverrides(
-  editorState: LiquidEditorState,
-  mediaOverrides: Record<string, string>,
-): LiquidEditorState {
-  if (Object.keys(mediaOverrides).length === 0) {
-    return editorState;
-  }
-
-  const sectionSettings = {
-    ...editorState.sectionSettings,
-  };
-
-  const blocks = editorState.blocks.map((block) => ({
-    ...block,
-    settings: {
-      ...block.settings,
-    },
-  }));
-
-  const blockIndexById = new Map<string, number>();
-  for (const [index, block] of blocks.entries()) {
-    blockIndexById.set(block.id, index);
-  }
-
-  for (const [pathKey, overrideUrl] of Object.entries(mediaOverrides)) {
-    const parsed = parseSettingPath(pathKey);
-    if (!parsed) {
-      continue;
-    }
-
-    if (parsed.kind === "section") {
-      sectionSettings[parsed.settingId] = overrideUrl;
-      continue;
-    }
-
-    const blockIndex = blockIndexById.get(parsed.blockId);
-    if (blockIndex === undefined) {
-      continue;
-    }
-
-    blocks[blockIndex].settings[parsed.settingId] = overrideUrl;
-  }
-
-  return {
-    sectionSettings,
-    blocks,
-  };
-}
-
-const SettingControl = memo(function SettingControl({
-  setting,
-  value,
-  pathKey,
-  onChange,
-  onSelectLocalMedia,
-}: SettingControlProps) {
-  const control = getSettingControlSpec(setting);
-
-  const sharedInputClass =
-    "mt-1 block w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500 focus-visible:ring-offset-1";
-  const selectOptions = useMemo(() => {
-    if (control.kind !== "select") {
-      return [];
-    }
-
-    if (setting.options.length > 0) {
-      return setting.options;
-    }
-
-    if (setting.type.toLowerCase() !== "color_scheme") {
-      return [];
-    }
-
-    const nextOptions = new Set<string>();
-    const defaultValue = toInputValue(setting.defaultValue).trim();
-    const currentValue = toInputValue(value).trim();
-
-    if (defaultValue) {
-      nextOptions.add(defaultValue);
-    }
-    if (currentValue) {
-      nextOptions.add(currentValue);
-    }
-
-    for (let index = 1; index <= 8; index += 1) {
-      nextOptions.add(`scheme_${index}`);
-    }
-
-    return Array.from(nextOptions).map((optionValue) => ({
-      value: optionValue,
-      label: toSelectFallbackLabel(optionValue),
-    }));
-  }, [control.kind, setting.defaultValue, setting.options, setting.type, value]);
-
-  return (
-    <div className="rounded-xl border border-zinc-200 bg-white p-3 shadow-sm">
-      <div className="flex items-center justify-between gap-3">
-        <label className="text-sm font-medium text-zinc-900" htmlFor={pathKey}>
-          {setting.label}
-        </label>
-        {control.simulated ? (
-          <span className="rounded bg-amber-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-800">
-            Simulated
-          </span>
-        ) : null}
-        {control.unknown ? (
-          <span className="rounded bg-rose-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-rose-800">
-            Unknown
-          </span>
-        ) : null}
-      </div>
-      {setting.info ? <p className="mt-1 text-xs text-zinc-600">{setting.info}</p> : null}
-
-      {control.kind === "checkbox" ? (
-        <div className="mt-2">
-          <input
-            id={pathKey}
-            type="checkbox"
-            checked={Boolean(value)}
-            onChange={(event) => onChange(pathKey, event.target.checked)}
-            className="h-4 w-4 rounded border-zinc-300 text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500"
-          />
-        </div>
-      ) : null}
-
-      {control.kind === "range" ? (
-        <div className="mt-2">
-          <input
-            id={pathKey}
-            type="range"
-            min={setting.min ?? 0}
-            max={setting.max ?? 100}
-            step={setting.step ?? 1}
-            value={typeof value === "number" ? value : Number.parseFloat(toInputValue(value)) || 0}
-            onChange={(event) => onChange(pathKey, Number.parseFloat(event.target.value) || 0)}
-            className="block w-full touch-manipulation accent-zinc-900"
-          />
-          <p className="mt-1 text-xs text-zinc-600">Value: {toInputValue(value)}</p>
-        </div>
-      ) : null}
-
-      {control.kind === "number" ? (
-        <input
-          id={pathKey}
-          type="number"
-          min={setting.min ?? undefined}
-          max={setting.max ?? undefined}
-          step={setting.step ?? undefined}
-          value={toInputValue(value)}
-          onChange={(event) => {
-            const parsed = Number.parseFloat(event.target.value);
-            onChange(pathKey, Number.isFinite(parsed) ? parsed : 0);
-          }}
-          className={sharedInputClass}
-        />
-      ) : null}
-
-      {control.kind === "color" ? (
-        <input
-          id={pathKey}
-          type="color"
-          value={toInputValue(value) || "#000000"}
-          onChange={(event) => onChange(pathKey, event.target.value)}
-          className="mt-1 h-10 w-20 rounded border border-zinc-300 bg-white"
-        />
-      ) : null}
-
-      {control.kind === "select" ? (
-        selectOptions.length > 0 ? (
-          <select
-            id={pathKey}
-            value={toInputValue(value)}
-            onChange={(event) => onChange(pathKey, event.target.value)}
-            className={sharedInputClass}
-          >
-            {selectOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <div className="mt-2">
-            <input
-              id={pathKey}
-              type="text"
-              value={toInputValue(value)}
-              placeholder={setting.placeholder ?? ""}
-              onChange={(event) => onChange(pathKey, event.target.value)}
-              className={sharedInputClass}
-            />
-            <p className="mt-1 text-xs text-zinc-600">No selectable options were provided in schema; using text fallback.</p>
-          </div>
-        )
-      ) : null}
-
-      {control.kind === "textarea" ? (
-        <textarea
-          id={pathKey}
-          value={toInputValue(value)}
-          onChange={(event) => onChange(pathKey, event.target.value)}
-          rows={4}
-          className={sharedInputClass}
-        />
-      ) : null}
-
-      {control.kind === "json" ? (
-        <div className="mt-2">
-          <textarea
-            id={pathKey}
-            value={toInputValue(value)}
-            rows={4}
-            onChange={(event) => {
-              const nextValue = event.target.value;
-              try {
-                const parsed = JSON.parse(nextValue) as LiquidSettingJsonValue;
-                onChange(pathKey, parsed);
-              } catch {
-                onChange(pathKey, nextValue);
-              }
-            }}
-            className={sharedInputClass}
-          />
-          <p className="mt-1 text-xs text-zinc-600">JSON values are simulated in sandbox mode.</p>
-        </div>
-      ) : null}
-
-      {control.kind === "simulated_resource" ? (
-        <SimulatedResourceEditor setting={setting} pathKey={pathKey} value={value} onChange={onChange} />
-      ) : null}
-
-      {control.kind === "simulated_resource_list" ? (
-        <SimulatedResourceListEditor setting={setting} pathKey={pathKey} value={value} onChange={onChange} />
-      ) : null}
-
-      {control.kind === "simulated_metaobject" ? (
-        <SimulatedMetaobjectEditor setting={setting} pathKey={pathKey} value={value} onChange={onChange} />
-      ) : null}
-
-      {control.kind === "simulated_menu" ? (
-        <SimulatedMenuEditor setting={setting} pathKey={pathKey} value={value} onChange={onChange} />
-      ) : null}
-
-      {control.kind === "text" || control.kind === "url" ? (
-        <input
-          id={pathKey}
-          type={control.inputType}
-          value={toInputValue(value)}
-          placeholder={setting.placeholder ?? ""}
-          onChange={(event) => onChange(pathKey, event.target.value)}
-          className={sharedInputClass}
-        />
-      ) : null}
-
-      {control.supportsLocalFilePreview ? (
-        <div className="mt-2">
-          <label className="block text-xs font-medium text-zinc-700" htmlFor={`${pathKey}:file`}>
-            Local preview file (not persisted)
-          </label>
-          <input
-            id={`${pathKey}:file`}
-            type="file"
-            accept="image/*,video/*"
-            onChange={(event) => {
-              const file = event.target.files?.[0] ?? null;
-              onSelectLocalMedia(pathKey, file);
-            }}
-            className="mt-1 block w-full text-xs text-zinc-700 file:mr-3 file:rounded-md file:border file:border-zinc-300 file:bg-white file:px-2 file:py-1 file:text-xs file:font-medium file:text-zinc-800"
-          />
-        </div>
-      ) : null}
-    </div>
-  );
-});
-
 export function SandboxClient({ component }: SandboxClientProps) {
   const [isPendingTransition, startTransition] = useTransition();
   const [source, setSource] = useState<string | null>(null);
@@ -847,6 +76,7 @@ export function SandboxClient({ component }: SandboxClientProps) {
   const [isRendering, setIsRendering] = useState(false);
   const [splitPercent, setSplitPercent] = useState(44);
   const [isResizing, setIsResizing] = useState(false);
+  const [isWorkspaceFullWidth, setIsWorkspaceFullWidth] = useState(false);
   const [pendingBlockType, setPendingBlockType] = useState<string>("");
   const [mediaOverrides, setMediaOverrides] = useState<Record<string, string>>({});
 
@@ -874,12 +104,22 @@ export function SandboxClient({ component }: SandboxClientProps) {
     return map;
   }, [schema]);
 
+  const sectionSettingLookup = useMemo(() => buildSettingLookup(schema?.settings ?? []), [schema]);
+  const blockSettingLookupByType = useMemo(() => {
+    const map = new Map<string, Map<string, LiquidSchemaSetting>>();
+    for (const definition of schema?.blocks ?? []) {
+      map.set(definition.type, buildSettingLookup(definition.settings));
+    }
+    return map;
+  }, [schema]);
+
   const workspaceStyle = useMemo(
     () =>
       ({
         "--sandbox-left-pane": `${splitPercent}%`,
-        gridTemplateColumns: "minmax(20rem, var(--sandbox-left-pane)) 0.625rem minmax(20rem, 1fr)",
-        minHeight: "72dvh",
+        gridTemplateColumns: "minmax(14rem, var(--sandbox-left-pane)) 1.5rem minmax(14rem, 1fr)",
+        height: "100%",
+        minHeight: 0,
       }) as CSSProperties,
     [splitPercent],
   );
@@ -1379,6 +619,10 @@ export function SandboxClient({ component }: SandboxClientProps) {
 
   const handleSplitterPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (activePointerIdRef.current !== null) {
+        return;
+      }
+
       if (event.button !== 0) {
         return;
       }
@@ -1428,7 +672,7 @@ export function SandboxClient({ component }: SandboxClientProps) {
     const objectUrl = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = objectUrl;
-    anchor.download = `${toTitleSlug(component.title)}-patched.liquid`;
+    anchor.download = `${toTitleSlug(component.title)}-current.liquid`;
     document.body.appendChild(anchor);
     anchor.click();
     anchor.remove();
@@ -1438,239 +682,69 @@ export function SandboxClient({ component }: SandboxClientProps) {
     }, 0);
   }, [component.title, editorState, schema, source]);
 
+  const handleToggleWorkspaceWidth = useCallback(() => {
+    setIsWorkspaceFullWidth((current) => !current);
+  }, []);
+
   return (
-    <main className="mx-auto min-h-dvh w-full max-w-[1500px] px-4 py-6 sm:px-6">
-      <header className="mb-4 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-500">Phase 4</p>
-            <h1 className="mt-1 text-2xl font-semibold tracking-tight text-zinc-900">Liquid Sandbox</h1>
-            <p className="mt-1 text-sm text-zinc-600">
-              {component.title} · {component.category} · uploaded {formatUtcTimestamp(component.created_at)}
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <a
-              href={`/api/components/${encodeURIComponent(component.id)}/download`}
-              className="inline-flex h-10 items-center rounded-lg border border-zinc-300 px-4 text-sm font-medium text-zinc-800 transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500 focus-visible:ring-offset-2"
-            >
-              Download Original
-            </a>
-            <button
-              type="button"
-              onClick={handleDownloadPatched}
-              disabled={!editorState || !schema || !source}
-              className="inline-flex h-10 items-center rounded-lg bg-zinc-900 px-4 text-sm font-medium text-white transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-600 focus-visible:ring-offset-2"
-            >
-              Download Patched
-            </button>
-            <Link
-              href="/"
-              className="inline-flex h-10 items-center rounded-lg border border-zinc-300 px-4 text-sm font-medium text-zinc-800 transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500 focus-visible:ring-offset-2"
-            >
-              Back to Gallery
-            </Link>
-          </div>
-        </div>
-        <div className="mt-3 flex flex-wrap gap-3 text-xs text-zinc-600">
-          <span>Last render: {lastRenderDurationMs !== null ? `${lastRenderDurationMs}ms` : "—"}</span>
-          <span>p95 render: {renderP95Ms !== null ? `${renderP95Ms}ms` : "—"}</span>
-          <span>Target: ≤120ms p95</span>
-          {isRendering || isPendingTransition ? <span className="font-medium text-zinc-900">Rendering…</span> : null}
-        </div>
-      </header>
+    <main
+      className={`sandbox-page mx-auto flex h-dvh w-full flex-col overflow-hidden px-4 pt-4 pb-0 sm:px-6 sm:pt-5 sm:pb-0 ${
+        isWorkspaceFullWidth ? "max-w-none" : "max-w-[1500px]"
+      }`}
+    >
+      <SandboxHeader
+        component={component}
+        canDownloadPatched={Boolean(editorState && schema && source)}
+        onDownloadPatched={handleDownloadPatched}
+        isWorkspaceFullWidth={isWorkspaceFullWidth}
+        onToggleWorkspaceWidth={handleToggleWorkspaceWidth}
+        lastRenderDurationMs={lastRenderDurationMs}
+        renderP95Ms={renderP95Ms}
+        isRendering={isRendering}
+        isPendingTransition={isPendingTransition}
+      />
 
-      {isLoading ? (
-        <section className="rounded-2xl border border-zinc-200 bg-white p-6 text-sm text-zinc-700 shadow-sm">
-          Loading Liquid source…
-        </section>
-      ) : loadError ? (
-        <section className="rounded-2xl border border-red-300 bg-red-50 p-6 text-sm text-red-800 shadow-sm">
-          {loadError}
-        </section>
-      ) : !schema || !editorState || !source ? (
-        <section className="rounded-2xl border border-red-300 bg-red-50 p-6 text-sm text-red-800 shadow-sm">
-          Schema parsing failed. This component cannot be edited in the sandbox yet.
-        </section>
-      ) : (
-        <div ref={workspaceRef} className="grid min-h-[72vh] gap-3" style={workspaceStyle}>
-          <section
-            className="min-w-0 overflow-auto rounded-2xl border border-zinc-200 bg-zinc-50 p-3"
-            style={{ contain: "layout paint style" }}
-          >
-            <div className="space-y-4">
-              <div className="rounded-xl border border-zinc-200 bg-white p-3">
-                <h2 className="text-sm font-semibold text-zinc-900">Section Settings</h2>
-                <p className="mt-1 text-xs text-zinc-600">
-                  Unsupported/simulated controls: {sectionUnsupportedSettingsCount}
-                </p>
-              </div>
-
-              {schema.settings.length === 0 ? (
-                <div className="rounded-xl border border-zinc-200 bg-white p-3 text-sm text-zinc-700">
-                  No section settings were found in schema.
-                </div>
-              ) : (
-                schema.settings.map((setting) => (
-                  <SettingControl
-                    key={setting.id}
-                    setting={setting}
-                    value={editorState.sectionSettings[setting.id] ?? ""}
-                    pathKey={getSectionSettingPath(setting.id)}
-                    onChange={handleSettingValueChange}
-                    onSelectLocalMedia={handleSelectLocalMedia}
-                  />
-                ))
-              )}
-
-              <div className="rounded-xl border border-zinc-200 bg-white p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <h2 className="text-sm font-semibold text-zinc-900">Blocks</h2>
-                    <p className="mt-1 text-xs text-zinc-600">
-                      Unsupported/simulated block settings: {blockUnsupportedSettingsCount}
-                    </p>
-                  </div>
-                  {schema.blocks.length > 0 ? (
-                    <div className="flex items-center gap-2">
-                      <select
-                        value={pendingBlockType}
-                        onChange={(event) => setPendingBlockType(event.target.value)}
-                        className="h-9 rounded-lg border border-zinc-300 px-3 text-xs text-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500 focus-visible:ring-offset-1"
-                      >
-                        {schema.blocks.map((block) => (
-                          <option key={block.type} value={block.type}>
-                            {block.name}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        disabled={!canAddSelectedBlock}
-                        onClick={handleAddBlock}
-                        className="inline-flex h-9 items-center rounded-lg border border-zinc-300 px-3 text-xs font-medium text-zinc-800 transition-colors hover:bg-zinc-50 disabled:cursor-not-allowed disabled:text-zinc-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500 focus-visible:ring-offset-1"
-                      >
-                        Add block
-                      </button>
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-
-              {editorState.blocks.length === 0 ? (
-                <div className="rounded-xl border border-zinc-200 bg-white p-3 text-sm text-zinc-700">
-                  No block instances in current state.
-                </div>
-              ) : (
-                editorState.blocks.map((block, index) => {
-                  const definition = blockDefinitionByType.get(block.type);
-                  return (
-                    <div key={block.id} className="rounded-xl border border-zinc-200 bg-white p-3">
-                      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                        <p className="text-sm font-semibold text-zinc-900">
-                          Block {index + 1}: {definition?.name ?? block.type}
-                        </p>
-                        <div className="flex gap-1">
-                          <button
-                            type="button"
-                            onClick={() => handleMoveBlock(block.id, "up")}
-                            disabled={index === 0}
-                            className="inline-flex h-8 items-center rounded-md border border-zinc-300 px-2 text-xs text-zinc-700 transition-colors hover:bg-zinc-50 disabled:cursor-not-allowed disabled:text-zinc-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500 focus-visible:ring-offset-1"
-                          >
-                            Up
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleMoveBlock(block.id, "down")}
-                            disabled={index === editorState.blocks.length - 1}
-                            className="inline-flex h-8 items-center rounded-md border border-zinc-300 px-2 text-xs text-zinc-700 transition-colors hover:bg-zinc-50 disabled:cursor-not-allowed disabled:text-zinc-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500 focus-visible:ring-offset-1"
-                          >
-                            Down
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveBlock(block.id)}
-                            className="inline-flex h-8 items-center rounded-md border border-red-300 px-2 text-xs text-red-700 transition-colors hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-1"
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="space-y-3">
-                        {(definition?.settings ?? []).map((setting) => (
-                          <SettingControl
-                            key={`${block.id}:${setting.id}`}
-                            setting={setting}
-                            value={block.settings[setting.id] ?? ""}
-                            pathKey={getBlockSettingPath(block.id, setting.id)}
-                            onChange={handleSettingValueChange}
-                            onSelectLocalMedia={handleSelectLocalMedia}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-
-              {diagnostics.length > 0 ? (
-                <div className="rounded-xl border border-amber-300 bg-amber-50 p-3">
-                  <h3 className="text-sm font-semibold text-amber-900">Schema Diagnostics</h3>
-                  <ul className="mt-2 space-y-1 text-xs text-amber-900">
-                    {diagnostics.map((diagnostic, index) => (
-                      <li key={`${diagnostic.code}-${index}`}>
-                        [{diagnostic.level}] {diagnostic.message}
-                        {diagnostic.path ? ` (${diagnostic.path})` : ""}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-            </div>
+      <div className="min-h-0 flex-1">
+        {isLoading ? (
+          <section className="sandbox-card h-full overflow-auto p-6 text-sm" style={{ color: "var(--color-bark)" }}>
+            Loading Liquid source…
           </section>
-
-          <div
-            role="separator"
-            aria-label="Resize editor and preview panels"
-            aria-orientation="vertical"
-            aria-valuemin={MIN_SPLIT_PERCENT}
-            aria-valuemax={MAX_SPLIT_PERCENT}
-            aria-valuenow={Math.round(splitPercent)}
-            tabIndex={0}
-            onPointerDown={handleSplitterPointerDown}
-            onKeyDown={handleSplitterKeyDown}
-            className={`group relative flex touch-none items-center justify-center rounded-full border ${
-              isResizing
-                ? "border-zinc-700 bg-zinc-900 text-white"
-                : "border-zinc-300 bg-white text-zinc-500 hover:border-zinc-400 hover:text-zinc-700"
-            }`}
-            style={{
-              contain: "layout paint style",
-              willChange: isResizing ? "transform" : "auto",
-              transform: isResizing ? "translateZ(0)" : "none",
-            }}
-          >
-            <span className="h-10 w-1.5 rounded-full bg-current/70" />
-          </div>
-
-          <section
-            className="min-w-0 overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm"
-            style={{ contain: "layout paint style" }}
-          >
-            <header className="border-b border-zinc-200 px-4 py-3">
-              <h2 className="text-sm font-semibold text-zinc-900">Preview</h2>
-              {previewError ? <p className="mt-1 text-xs text-red-700">{previewError}</p> : null}
-            </header>
-            <div
-              className="h-[calc(72vh-3.5rem)] min-h-[420px] w-full"
-              style={{ height: "calc(72dvh - 3.5rem)" }}
-            >
-              <iframe title="Component preview" srcDoc={iframeDocument} sandbox="" className="h-full w-full border-0" />
-            </div>
+        ) : loadError ? (
+          <section className="sandbox-card-danger h-full overflow-auto p-6 text-sm" style={{ color: "#8f2f29" }}>
+            {loadError}
           </section>
-        </div>
-      )}
+        ) : !schema || !editorState || !source ? (
+          <section className="sandbox-card-danger h-full overflow-auto p-6 text-sm" style={{ color: "#8f2f29" }}>
+            Schema parsing failed. This component cannot be edited in the sandbox yet.
+          </section>
+        ) : (
+          <SandboxWorkspace
+            workspaceRef={workspaceRef}
+            workspaceStyle={workspaceStyle}
+            splitPercent={splitPercent}
+            isResizing={isResizing}
+            schema={schema}
+            editorState={editorState}
+            diagnostics={diagnostics}
+            sectionUnsupportedSettingsCount={sectionUnsupportedSettingsCount}
+            blockUnsupportedSettingsCount={blockUnsupportedSettingsCount}
+            pendingBlockType={pendingBlockType}
+            canAddSelectedBlock={canAddSelectedBlock}
+            sectionSettingLookup={sectionSettingLookup}
+            blockSettingLookupByType={blockSettingLookupByType}
+            previewError={previewError}
+            iframeDocument={iframeDocument}
+            onPendingBlockTypeChange={setPendingBlockType}
+            onAddBlock={handleAddBlock}
+            onMoveBlock={handleMoveBlock}
+            onRemoveBlock={handleRemoveBlock}
+            onSettingValueChange={handleSettingValueChange}
+            onSelectLocalMedia={handleSelectLocalMedia}
+            onSplitterPointerDown={handleSplitterPointerDown}
+            onSplitterKeyDown={handleSplitterKeyDown}
+          />
+        )}
+      </div>
     </main>
   );
 }

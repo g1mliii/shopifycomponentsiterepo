@@ -74,27 +74,54 @@ export function GalleryFilters({
   }, [categoryValue, pathname, queryValue, router, searchParamsSnapshot, startTransition]);
 
   return (
-    <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-5">
-      <div className="grid gap-3 sm:grid-cols-2">
+    <section
+      className="p-4 sm:p-5"
+      style={{
+        borderRadius: "2rem",
+        border: "1px solid color-mix(in srgb, var(--color-timber) 50%, transparent)",
+        background: "var(--color-card)",
+        boxShadow: "var(--shadow-moss)",
+      }}
+    >
+      <div className="grid gap-4 sm:grid-cols-2">
         <label className="grid gap-1">
-          <span className="text-sm font-medium text-zinc-700">Search</span>
+          <span className="text-sm font-medium" style={{ color: "var(--color-bark)" }}>
+            Search
+          </span>
           <input
+            name="query"
             type="search"
             value={queryValue}
             onChange={(event) => setQueryValue(event.currentTarget.value)}
-            placeholder="Search by title"
+            placeholder="Search by title…"
             autoComplete="off"
             spellCheck={false}
-            className="h-10 rounded-lg border border-zinc-300 px-3 text-sm text-zinc-900 transition-colors focus-visible:border-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 focus-visible:ring-offset-2"
+            className="h-11 rounded-full border px-5 text-sm transition-[border-color,background-color] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+            style={{
+              borderColor: "var(--color-timber)",
+              background: "color-mix(in srgb, white 50%, transparent)",
+              color: "var(--foreground)",
+              /* ring via CSS custom property */
+              "--tw-ring-color": "color-mix(in srgb, var(--color-moss) 30%, transparent)",
+            } as React.CSSProperties}
           />
         </label>
 
         <label className="grid gap-1">
-          <span className="text-sm font-medium text-zinc-700">Category</span>
+          <span className="text-sm font-medium" style={{ color: "var(--color-bark)" }}>
+            Category
+          </span>
           <select
+            name="category"
             value={categoryValue}
             onChange={(event) => setCategoryValue(event.currentTarget.value)}
-            className="h-10 rounded-lg border border-zinc-300 bg-white px-3 text-sm text-zinc-900 transition-colors focus-visible:border-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 focus-visible:ring-offset-2"
+            className="h-11 rounded-full border px-5 text-sm transition-[border-color,background-color] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 cursor-pointer"
+            style={{
+              borderColor: "var(--color-timber)",
+              background: "color-mix(in srgb, white 50%, transparent)",
+              color: "var(--foreground)",
+              "--tw-ring-color": "color-mix(in srgb, var(--color-moss) 30%, transparent)",
+            } as React.CSSProperties}
           >
             <option value="">All categories</option>
             {categories.map((category) => (
@@ -106,8 +133,13 @@ export function GalleryFilters({
         </label>
       </div>
 
-      <p className="mt-3 text-xs text-zinc-500" role="status" aria-live="polite">
-        {isPending ? "Updating results..." : "Results update automatically after you stop typing."}
+      <p
+        className="mt-3 text-xs transition-opacity duration-300"
+        style={{ color: "var(--color-muted-fg)", opacity: isPending ? 1 : 0.7 }}
+        role="status"
+        aria-live="polite"
+      >
+        {isPending ? "Updating results…" : "Results update automatically after you stop typing."}
       </p>
     </section>
   );

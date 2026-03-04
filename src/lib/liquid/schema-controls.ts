@@ -81,7 +81,7 @@ export function getSettingControlSpec(setting: LiquidSchemaSetting): LiquidContr
     return {
       kind: "simulated_metaobject",
       inputType: "text",
-      simulated: true,
+      simulated: setting.support === "simulated",
       unknown: false,
       supportsLocalFilePreview: false,
     };
@@ -91,7 +91,7 @@ export function getSettingControlSpec(setting: LiquidSchemaSetting): LiquidContr
     return {
       kind: "simulated_menu",
       inputType: "text",
-      simulated: true,
+      simulated: setting.support === "simulated",
       unknown: false,
       supportsLocalFilePreview: false,
     };
@@ -101,7 +101,7 @@ export function getSettingControlSpec(setting: LiquidSchemaSetting): LiquidContr
     return {
       kind: "simulated_resource_list",
       inputType: "text",
-      simulated: true,
+      simulated: setting.support === "simulated",
       unknown: false,
       supportsLocalFilePreview: false,
     };
@@ -111,7 +111,7 @@ export function getSettingControlSpec(setting: LiquidSchemaSetting): LiquidContr
     return {
       kind: "simulated_resource",
       inputType: "text",
-      simulated: true,
+      simulated: setting.support === "simulated",
       unknown: false,
       supportsLocalFilePreview: false,
     };

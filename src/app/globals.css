@@ -1,8 +1,21 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Organic / Natural design tokens — wabi-sabi palette */
+  --background: #FDFCF8;          /* Rice Paper */
+  --foreground: #2C2C24;          /* Deep Loam */
+  --color-moss: #5D7052;          /* Moss Green */
+  --color-moss-fg: #F3F4F1;       /* Pale Mist */
+  --color-clay: #C18C5D;          /* Terracotta */
+  --color-sand: #E6DCCD;          /* Sand / Beige */
+  --color-stone: #F0EBE5;         /* Stone */
+  --color-muted-fg: #78786C;      /* Dried Grass */
+  --color-bark: #4A4A40;          /* Bark */
+  --color-timber: #DED8CF;        /* Raw Timber */
+  --color-card: #FEFEFA;          /* Card surface */
+  --shadow-moss: 0 4px 20px -2px rgba(93, 112, 82, 0.14);
+  --shadow-clay: 0 4px 20px -2px rgba(193, 140, 93, 0.2);
+
   color-scheme: light;
   --font-system-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif,
@@ -18,8 +31,152 @@
   --font-mono: var(--font-system-mono);
 }
 
+html {
+  overflow-x: clip;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-system-sans);
+}
+
+.sandbox-page {
+  background:
+    radial-gradient(
+      circle at 0% 0%,
+      color-mix(in srgb, var(--color-moss) 10%, transparent),
+      transparent 58%
+    ),
+    radial-gradient(
+      circle at 100% 0%,
+      color-mix(in srgb, var(--color-clay) 12%, transparent),
+      transparent 62%
+    ),
+    var(--background);
+}
+
+.sandbox-card {
+  border: 1px solid color-mix(in srgb, var(--color-timber) 58%, transparent);
+  background: var(--color-card);
+  border-radius: 1.5rem;
+}
+
+.sandbox-card-soft {
+  border: 1px solid color-mix(in srgb, var(--color-timber) 50%, transparent);
+  background: color-mix(in srgb, var(--color-card) 78%, var(--color-stone));
+  border-radius: 1rem;
+}
+
+.sandbox-card-warn {
+  border: 1px solid color-mix(in srgb, var(--color-clay) 44%, transparent);
+  background: color-mix(in srgb, var(--color-clay) 14%, var(--color-card));
+  border-radius: 1rem;
+}
+
+.sandbox-card-danger {
+  border: 1px solid color-mix(in srgb, #b3261e 38%, transparent);
+  background: color-mix(in srgb, #b3261e 10%, var(--color-card));
+  border-radius: 1.5rem;
+}
+
+.sandbox-muted {
+  color: var(--color-muted-fg);
+}
+
+.sandbox-title {
+  color: var(--foreground);
+  letter-spacing: -0.012em;
+}
+
+.sandbox-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.25rem;
+  border-radius: 9999px;
+  border: 1px solid transparent;
+  padding: 0.5rem 0.875rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1;
+  touch-action: manipulation;
+}
+
+.sandbox-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.56;
+}
+
+.sandbox-btn-secondary {
+  border-color: color-mix(in srgb, var(--color-bark) 28%, var(--color-timber));
+  background: var(--color-card);
+  color: var(--foreground);
+}
+
+.sandbox-btn-primary {
+  border-color: color-mix(in srgb, var(--color-moss) 44%, var(--color-timber));
+  background: color-mix(in srgb, var(--color-moss) 12%, var(--color-card));
+  color: var(--foreground);
+}
+
+.sandbox-btn-danger {
+  border-color: color-mix(in srgb, #b3261e 48%, transparent);
+  background: color-mix(in srgb, #b3261e 10%, var(--color-card));
+  color: #7c1d18;
+}
+
+.sandbox-input {
+  display: block;
+  width: 100%;
+  border-radius: 0.85rem;
+  border: 1px solid color-mix(in srgb, var(--color-bark) 24%, var(--color-timber));
+  background: color-mix(in srgb, #ffffff 76%, var(--color-card));
+  color: var(--foreground);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+
+.sandbox-input::placeholder {
+  color: color-mix(in srgb, var(--color-muted-fg) 86%, transparent);
+}
+
+.sandbox-focus-ring:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--color-moss) 44%, transparent);
+  outline-offset: 2px;
+}
+
+.sandbox-badge {
+  border-radius: 9999px;
+  border: 1px solid color-mix(in srgb, var(--color-bark) 20%, var(--color-timber));
+  background: color-mix(in srgb, var(--color-stone) 75%, var(--color-card));
+  padding: 0.125rem 0.5rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sandbox-badge-simulated {
+  border-color: color-mix(in srgb, var(--color-clay) 44%, transparent);
+  background: color-mix(in srgb, var(--color-clay) 18%, var(--color-card));
+  color: #76461f;
+}
+
+.sandbox-badge-unknown {
+  border-color: color-mix(in srgb, #b3261e 34%, transparent);
+  background: color-mix(in srgb, #b3261e 10%, var(--color-card));
+  color: #7c1d18;
+}
+
+@media (max-width: 48rem) {
+  .sandbox-workspace {
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .sandbox-splitter {
+    display: none;
+  }
 }

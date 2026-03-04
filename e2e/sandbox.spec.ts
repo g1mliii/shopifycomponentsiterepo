@@ -27,6 +27,29 @@ test("sandbox renders live preview and downloads patched liquid", async ({ page 
 
   await page.goto(`/components/${encodeURIComponent(fixture.componentId)}/sandbox`);
   await expect(page.getByRole("heading", { name: "Liquid Sandbox" })).toBeVisible();
+  await expect(page.locator('iframe[title="Component preview"]')).toBeVisible();
+  const layoutMetrics = await page.evaluate(() => {
+    const main = document.querySelector("main");
+    const previewFrame = document.querySelector('iframe[title="Component preview"]');
+    const previewContainer = previewFrame?.parentElement;
+    if (!main || !previewContainer) {
+      return null;
+    }
+
+    const viewportHeight = window.innerHeight;
+    const previewRect = previewContainer.getBoundingClientRect();
+
+    return {
+      pageOverflowPx: Math.max(0, document.documentElement.scrollHeight - viewportHeight),
+      previewHeight: previewRect.height,
+      previewBottomGapPx: Math.abs(viewportHeight - previewRect.bottom),
+    };
+  });
+
+  expect(layoutMetrics).not.toBeNull();
+  expect(layoutMetrics?.pageOverflowPx ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(1);
+  expect(layoutMetrics?.previewHeight ?? 0).toBeGreaterThanOrEqual(320);
+  expect(layoutMetrics?.previewBottomGapPx ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(2);
 
   const colorSchemeSelect = page.getByLabel("Color Scheme");
   await expect(colorSchemeSelect).toBeVisible();
@@ -54,9 +77,38 @@ test("sandbox renders live preview and downloads patched liquid", async ({ page 
   await page.getByRole("button", { name: "Add block" }).click();
   await expect(page.getByText(/Block 3:/)).toBeVisible();
 
+  const containedMaxWidth = await page.evaluate(() => getComputedStyle(document.querySelector("main")!).maxWidth);
+  expect(containedMaxWidth).toBe("1500px");
+
+  await page.getByRole("button", { name: "Fill Width" }).click();
+  await expect(page.getByRole("button", { name: "Contained Width" })).toBeVisible();
+  await expect(page.getByRole("separator", { name: "Resize editor and preview panels" })).toHaveCount(1);
+  await expect(page.getByText("Section Settings")).toBeVisible();
+
+  const expandedLayoutMetrics = await page.evaluate(() => {
+    const main = document.querySelector("main");
+    const previewFrame = document.querySelector('iframe[title="Component preview"]');
+    const previewContainer = previewFrame?.parentElement;
+    if (!main || !previewContainer) {
+      return null;
+    }
+
+    const mainRect = main.getBoundingClientRect();
+    const previewRect = previewContainer.getBoundingClientRect();
+    const computedMain = getComputedStyle(main);
+    return {
+      maxWidth: computedMain.maxWidth,
+      previewToMainWidthRatio: mainRect.width > 0 ? previewRect.width / mainRect.width : 0,
+    };
+  });
+
+  expect(expandedLayoutMetrics).not.toBeNull();
+  expect(expandedLayoutMetrics?.maxWidth).toBe("none");
+  expect(expandedLayoutMetrics?.previewToMainWidthRatio ?? 0).toBeGreaterThanOrEqual(0.35);
+
   const [download] = await Promise.all([
     page.waitForEvent("download"),
-    page.getByRole("button", { name: "Download Patched" }).click(),
+    page.getByRole("button", { name: "Download Current" }).click(),
   ]);
 
   const downloadPath = await download.path();
@@ -65,6 +117,50 @@ test("sandbox renders live preview and downloads patched liquid", async ({ page 
   const patchedSource = await fs.readFile(downloadPath ?? "", "utf8");
   expect(patchedSource).toContain('"default": "Updated heading from e2e"');
   expect(patchedSource).toContain('"type": "slide"');
+});
+
+test("sandbox stacks workspace on narrow screens", async ({ page }) => {
+  if (!fixture) {
+    return;
+  }
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/components/${encodeURIComponent(fixture.componentId)}/sandbox`);
+
+  await expect(page.getByRole("heading", { name: "Liquid Sandbox" })).toBeVisible();
+  await expect(page.getByText("Section Settings")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Preview" })).toBeVisible();
+  await expect(page.getByRole("separator", { name: "Resize editor and preview panels" })).toHaveCount(0);
+
+  const mobileLayoutMetrics = await page.evaluate(() => {
+    const workspace = document.querySelector('[data-testid="sandbox-workspace"]');
+    const editorPane = document.querySelector('[data-testid="sandbox-editor-pane"]');
+    const previewPane = document.querySelector('[data-testid="sandbox-preview-pane"]');
+    if (!workspace || !editorPane || !previewPane) {
+      return null;
+    }
+
+    const workspaceRect = workspace.getBoundingClientRect();
+    const editorRect = editorPane.getBoundingClientRect();
+    const previewRect = previewPane.getBoundingClientRect();
+    const gridTemplateColumns = getComputedStyle(workspace).gridTemplateColumns;
+    const columnCount = gridTemplateColumns.trim().split(/\s+/).length;
+
+    return {
+      columnCount,
+      editorToWorkspaceWidthRatio: workspaceRect.width > 0 ? editorRect.width / workspaceRect.width : 0,
+      previewToWorkspaceWidthRatio: workspaceRect.width > 0 ? previewRect.width / workspaceRect.width : 0,
+      previewBelowEditor: previewRect.top >= editorRect.bottom - 1,
+      pageOverflowXPx: Math.max(0, document.documentElement.scrollWidth - window.innerWidth),
+    };
+  });
+
+  expect(mobileLayoutMetrics).not.toBeNull();
+  expect(mobileLayoutMetrics?.columnCount ?? Number.POSITIVE_INFINITY).toBe(1);
+  expect(mobileLayoutMetrics?.editorToWorkspaceWidthRatio ?? 0).toBeGreaterThanOrEqual(0.95);
+  expect(mobileLayoutMetrics?.previewToWorkspaceWidthRatio ?? 0).toBeGreaterThanOrEqual(0.95);
+  expect(mobileLayoutMetrics?.previewBelowEditor ?? false).toBeTruthy();
+  expect(mobileLayoutMetrics?.pageOverflowXPx ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(1);
 });
 
 test("sandbox revokes local media object URLs when unmounted", async ({ page }) => {

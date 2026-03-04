@@ -54,3 +54,15 @@ test("unknown settings with object defaults use json fallback", () => {
   assert.equal(spec.kind, "json");
   assert.equal(spec.unknown, true);
 });
+
+test("resource picker controls are treated as supported sandbox controls", () => {
+  const setting = createSetting({
+    type: "product",
+    support: "native",
+  });
+
+  const spec = getSettingControlSpec(setting);
+  assert.equal(spec.kind, "simulated_resource");
+  assert.equal(spec.simulated, false);
+  assert.equal(spec.unknown, false);
+});
