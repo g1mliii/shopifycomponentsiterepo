@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 
 import { apiError } from "@/lib/api/errors";
+import { getComponentByIdWithFilePath, isValidComponentId } from "@/lib/components/component-by-id";
 import { getDownloadRateLimitKey } from "@/lib/rate-limit/download-key";
 import { consumeInMemoryRateLimit } from "@/lib/rate-limit/in-memory";
-import { createServiceRoleSupabaseClient } from "@/lib/supabase/service-role";
+import { getPublicStorageObjectUrl } from "@/lib/supabase/public-storage-url";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 
-const COMPONENT_ID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const DOWNLOAD_SIGNED_URL_TTL_SECONDS = 60;
 const DOWNLOAD_RATE_LIMIT_MAX_ENTRIES = 2_000;
 
 function sanitizeDownloadName(value: string): string {
@@ -26,7 +26,7 @@ export async function GET(request: Request, context: RouteContext) {
   const params = await context.params;
   const componentId = params.id;
 
-  if (!COMPONENT_ID_REGEX.test(componentId)) {
+  if (!isValidComponentId(componentId)) {
     return apiError(400, "invalid_component_id", "A valid component id is required.", requestId);
   }
 
@@ -50,13 +50,11 @@ export async function GET(request: Request, context: RouteContext) {
   }
 
   try {
-    const supabase = createServiceRoleSupabaseClient();
-
-    const { data: component, error: componentError } = await supabase
-      .from("shopify_components")
-      .select("id, title, file_path")
-      .eq("id", componentId)
-      .maybeSingle();
+    const supabase = await createServerSupabaseClient();
+    const { data: component, error: componentError } = await getComponentByIdWithFilePath(
+      supabase,
+      componentId,
+    );
 
     if (componentError) {
       console.warn(
@@ -75,25 +73,11 @@ export async function GET(request: Request, context: RouteContext) {
     }
 
     const downloadName = `${sanitizeDownloadName(component.title)}.liquid`;
-    const { data: signedData, error: signedUrlError } = await supabase.storage
-      .from("liquid-files")
-      .createSignedUrl(component.file_path, DOWNLOAD_SIGNED_URL_TTL_SECONDS, {
-        download: downloadName,
-      });
+    const publicDownloadUrl = getPublicStorageObjectUrl("liquid-files", component.file_path, {
+      downloadFileName: downloadName,
+    });
 
-    if (signedUrlError || !signedData?.signedUrl) {
-      console.warn(
-        "[public-components-download] signed_url_failed",
-        JSON.stringify({
-          requestId,
-          componentId,
-          reason: signedUrlError?.message ?? "missing_signed_url",
-        }),
-      );
-      return apiError(500, "download_failed", "Failed to create download link.", requestId);
-    }
-
-    return NextResponse.redirect(signedData.signedUrl, {
+    return NextResponse.redirect(publicDownloadUrl, {
       status: 302,
       headers: {
         "Cache-Control": "no-store",

@@ -88,8 +88,8 @@ async function main() {
     )}`;
     const liquidPublicAccessResponse = await fetch(liquidPublicAccessUrl);
     assert(
-      liquidPublicAccessResponse.status >= 400,
-      `Expected direct anon liquid file access to fail, got status ${liquidPublicAccessResponse.status}.`,
+      liquidPublicAccessResponse.status === 200,
+      `Expected direct anon liquid file access to succeed, got status ${liquidPublicAccessResponse.status}.`,
     );
 
     const signupEmail = `phase1-signup-check-${Date.now()}@example.com`;

@@ -65,6 +65,9 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
     try {
       const response = await fetch("/api/admin/components", {
         method: "POST",
+        headers: {
+          "x-admin-csrf": "1",
+        },
         body: formData,
         signal: controller.signal,
       });

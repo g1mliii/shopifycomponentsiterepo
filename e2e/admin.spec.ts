@@ -8,6 +8,10 @@ import {
 } from "./helpers/supabase-test-users";
 
 let usersContext: SupabaseTestUsersContext | null = null;
+const ADMIN_MUTATION_HEADERS = {
+  "x-admin-csrf": "1",
+  origin: "http://localhost:3000",
+};
 
 function encodeObjectPath(path: string): string {
   return path
@@ -50,6 +54,7 @@ test("unauthenticated user is redirected to admin login", async ({ page }) => {
 
 test("unauthenticated request to upload API is rejected", async ({ request }) => {
   const response = await request.post("/api/admin/components", {
+    headers: ADMIN_MUTATION_HEADERS,
     multipart: {
       title: "Unauth upload",
       category: "hero",
@@ -74,6 +79,9 @@ test("unauthenticated request to upload API is rejected", async ({ request }) =>
 test("unauthenticated request to delete API is rejected", async ({ request }) => {
   const response = await request.delete(
     "/api/admin/components?id=11111111-1111-1111-1111-111111111111",
+    {
+      headers: ADMIN_MUTATION_HEADERS,
+    },
   );
 
   expect(response.status()).toBe(401);
@@ -90,6 +98,7 @@ test("authenticated non-admin is blocked in UI and API", async ({ page }) => {
   await expect(page.getByRole("heading", { name: /admin access required/i })).toBeVisible();
 
   const response = await page.request.post("/api/admin/components", {
+    headers: ADMIN_MUTATION_HEADERS,
     multipart: {
       title: "Blocked upload",
       category: "hero",
@@ -112,6 +121,9 @@ test("authenticated non-admin is blocked in UI and API", async ({ page }) => {
 
   const deleteResponse = await page.request.delete(
     "/api/admin/components?id=11111111-1111-1111-1111-111111111111",
+    {
+      headers: ADMIN_MUTATION_HEADERS,
+    },
   );
   expect(deleteResponse.status()).toBe(403);
   const deleteBody = (await deleteResponse.json()) as { error?: { code?: string } };
@@ -198,7 +210,7 @@ test("admin upload succeeds and persists storage + db paths", async ({ page }) =
       liquidPath,
     )}`;
     const liquidResponse = await fetch(liquidPublicUrl);
-    expect(liquidResponse.status).toBeGreaterThanOrEqual(400);
+    expect(liquidResponse.status).toBe(200);
 
     const listResponse = await page.request.get("/api/admin/components");
     expect(listResponse.status()).toBe(200);
@@ -210,6 +222,9 @@ test("admin upload succeeds and persists storage + db paths", async ({ page }) =
 
     const deleteResponse = await page.request.delete(
       `/api/admin/components?id=${encodeURIComponent(componentId)}`,
+      {
+        headers: ADMIN_MUTATION_HEADERS,
+      },
     );
     expect(deleteResponse.status()).toBe(200);
 
@@ -248,6 +263,7 @@ test("admin upload rejects invalid file types with 400", async ({ page }) => {
   await loginAs(page, usersContext.adminEmail, usersContext.adminPassword);
 
   const invalidThumbnailResponse = await page.request.post("/api/admin/components", {
+    headers: ADMIN_MUTATION_HEADERS,
     multipart: {
       title: "Invalid thumb",
       category: "hero",
@@ -271,6 +287,7 @@ test("admin upload rejects invalid file types with 400", async ({ page }) => {
   expect(invalidThumbnailBody.error?.code).toBe("validation_failed");
 
   const invalidLiquidResponse = await page.request.post("/api/admin/components", {
+    headers: ADMIN_MUTATION_HEADERS,
     multipart: {
       title: "Invalid liquid",
       category: "hero",

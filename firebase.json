@@ -1,0 +1,6 @@
+{
+  "apphosting": {
+    "backendId": "shopifycomponents",
+    "rootDir": "."
+  }
+}

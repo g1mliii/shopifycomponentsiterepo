@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { type ServerSupabaseClient, requireAdmin } from "@/lib/auth/require-admin";
 import { apiError } from "@/lib/api/errors";
+import { guardAdminMutationRequest } from "@/lib/security/admin-request-guard";
 import {
   type ValidationIssue,
   validateUploadComponentInput,
@@ -28,6 +29,7 @@ type ComponentsAuditEvent = {
   userId?: string;
   result:
     | "auth_rejected"
+    | "request_rejected"
     | "list_failed"
     | "list_success"
     | "payload_invalid"
@@ -238,6 +240,19 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const startedAt = Date.now();
   const requestId = crypto.randomUUID();
+  const requestGuard = guardAdminMutationRequest(request);
+
+  if (!requestGuard.ok) {
+    logComponentsAudit({
+      action: "upload",
+      requestId,
+      result: "request_rejected",
+      status: requestGuard.status,
+      durationMs: Date.now() - startedAt,
+    });
+    return apiError(requestGuard.status, requestGuard.code, requestGuard.message, requestId);
+  }
+
   const authResult = await requireAdmin();
 
   if (!authResult.ok) {
@@ -423,6 +438,19 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   const startedAt = Date.now();
   const requestId = crypto.randomUUID();
+  const requestGuard = guardAdminMutationRequest(request);
+
+  if (!requestGuard.ok) {
+    logComponentsAudit({
+      action: "delete",
+      requestId,
+      result: "request_rejected",
+      status: requestGuard.status,
+      durationMs: Date.now() - startedAt,
+    });
+    return apiError(requestGuard.status, requestGuard.code, requestGuard.message, requestId);
+  }
+
   const authResult = await requireAdmin();
 
   if (!authResult.ok) {

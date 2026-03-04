@@ -86,7 +86,7 @@ test("download endpoint returns redirect and applies rate limit", async ({ reque
   );
 
   expect(successResponse.status()).toBe(302);
-  expect(successResponse.headers().location).toContain("/storage/v1/object/sign/liquid-files/");
+  expect(successResponse.headers().location).toContain("/storage/v1/object/public/liquid-files/");
 
   for (let attempt = 0; attempt < 20; attempt += 1) {
     await request.get(`/api/components/${encodeURIComponent(fixtures.firstComponentId)}/download`, {

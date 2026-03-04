@@ -155,6 +155,9 @@ export function ComponentsManager({ initialComponents, listLimit }: ComponentsMa
     try {
       const response = await fetch(`/api/admin/components?id=${encodeURIComponent(component.id)}`, {
         method: "DELETE",
+        headers: {
+          "x-admin-csrf": "1",
+        },
         signal: controller.signal,
       });
       const body = (await response

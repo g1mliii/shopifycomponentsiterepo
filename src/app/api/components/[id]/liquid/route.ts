@@ -5,7 +5,8 @@ import { getComponentByIdWithFilePath, isValidComponentId } from "@/lib/componen
 import { parseLiquidSchema } from "@/lib/liquid/schema-parse";
 import { getDownloadRateLimitKey } from "@/lib/rate-limit/download-key";
 import { consumeInMemoryRateLimit } from "@/lib/rate-limit/in-memory";
-import { createServiceRoleSupabaseClient } from "@/lib/supabase/service-role";
+import { getPublicStorageObjectUrl } from "@/lib/supabase/public-storage-url";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 const LIQUID_ROUTE_RATE_LIMIT_MAX_ENTRIES = 2_000;
 
@@ -40,7 +41,7 @@ export async function GET(request: Request, context: RouteContext) {
   }
 
   try {
-    const supabase = createServiceRoleSupabaseClient();
+    const supabase = await createServerSupabaseClient();
     const { data: component, error: componentError } = await getComponentByIdWithFilePath(supabase, id);
 
     if (componentError) {
@@ -59,23 +60,24 @@ export async function GET(request: Request, context: RouteContext) {
       return apiError(404, "component_not_found", "Component not found.", requestId);
     }
 
-    const { data: fileBlob, error: fileError } = await supabase.storage
-      .from("liquid-files")
-      .download(component.file_path);
+    const publicSourceUrl = getPublicStorageObjectUrl("liquid-files", component.file_path);
+    const sourceResponse = await fetch(publicSourceUrl, {
+      cache: "no-store",
+    });
 
-    if (fileError || !fileBlob) {
+    if (!sourceResponse.ok) {
       console.warn(
         "[public-component-liquid] source_download_failed",
         JSON.stringify({
           requestId,
           componentId: id,
-          reason: fileError?.message ?? "missing_file_blob",
+          reason: `status_${sourceResponse.status}`,
         }),
       );
       return apiError(500, "liquid_lookup_failed", "Failed to read component Liquid source.", requestId);
     }
 
-    const source = await fileBlob.text();
+    const source = await sourceResponse.text();
     const parsed = parseLiquidSchema(source);
 
     return NextResponse.json(

@@ -33,6 +33,7 @@ This repo uses Supabase MCP project setup instead of `supabase login` / `supabas
 ### Environment Variable Safety
 
 - `NEXT_PUBLIC_*` variables are exposed to the browser bundle.
+- `APP_ORIGIN` should be set to your production origin (for example `https://your-domain.com`) to harden admin mutation origin checks.
 - `SUPABASE_SERVICE_ROLE_KEY` is a secret and must only be used in trusted server code (never client components, never browser).
 
 ### Production Hosting
@@ -40,6 +41,25 @@ This repo uses Supabase MCP project setup instead of `supabase login` / `supabas
 - Do not use `.env.local` in hosted environments. Configure environment variables in your hosting platform (for example Vercel project settings).
 - Client-side app access should use only `NEXT_PUBLIC_SUPABASE_URL` + publishable/anon key and rely on RLS + authenticated user JWT.
 - Use `SUPABASE_SERVICE_ROLE_KEY` only for privileged server-side jobs (for example admin bootstrap, secure maintenance scripts, or protected server routes/functions).
+
+### Firebase App Hosting
+
+This repo includes Firebase App Hosting config files:
+
+- `.firebaserc`
+- `firebase.json`
+- `apphosting.yaml`
+
+Current default Firebase project:
+
+- `shopifycomponents-030426`
+
+Important:
+
+- Firebase App Hosting requires the project to be on the Blaze plan before backend creation/deploy can succeed.
+- After enabling Blaze, create/deploy backend with:
+  - `firebase apphosting:backends:create --backend shopifycomponents --primary-region us-central1 --app <WEB_APP_ID> --root-dir .`
+  - `firebase deploy --only apphosting --project shopifycomponents-030426`
 
 ## Storage Reconciliation Cron
 
