@@ -34,6 +34,7 @@ This repo uses Supabase MCP project setup instead of `supabase login` / `supabas
 
 - `NEXT_PUBLIC_*` variables are exposed to the browser bundle.
 - `APP_ORIGIN` should be set to your production origin (for example `https://your-domain.com`) to harden admin mutation origin checks.
+- `ADMIN_ALLOWED_ORIGINS` is optional and supports a comma-separated trusted origin allowlist for admin mutation requests.
 - `SUPABASE_SERVICE_ROLE_KEY` is a secret and must only be used in trusted server code (never client components, never browser).
 
 ### Production Hosting
@@ -41,6 +42,7 @@ This repo uses Supabase MCP project setup instead of `supabase login` / `supabas
 - Do not use `.env.local` in hosted environments. Configure environment variables in your hosting platform (for example Vercel project settings).
 - Client-side app access should use only `NEXT_PUBLIC_SUPABASE_URL` + publishable/anon key and rely on RLS + authenticated user JWT.
 - Use `SUPABASE_SERVICE_ROLE_KEY` only for privileged server-side jobs (for example admin bootstrap, secure maintenance scripts, or protected server routes/functions).
+- Public download/liquid endpoints in this repo mint short-lived signed URLs server-side for private `liquid-files`; this requires service-role usage on the server boundary only.
 
 ### Firebase App Hosting
 
@@ -60,6 +62,20 @@ Important:
 - After enabling Blaze, create/deploy backend with:
   - `firebase apphosting:backends:create --backend shopifycomponents --primary-region us-central1 --app <WEB_APP_ID> --root-dir .`
   - `firebase deploy --only apphosting --project shopifycomponents-030426`
+
+Cost-focused defaults in `apphosting.yaml`:
+
+- `minInstances: 0` and `maxInstances: 1` to cap idle and burst spend.
+- `cpu: 1`, `memoryMiB: 512`, `concurrency: 80` for low baseline runtime cost.
+- `DISABLE_PUBLIC_COMPONENTS_CACHE=true` to avoid long-lived in-memory result caches on server instances.
+- `DISABLE_RATE_LIMIT_FALLBACK_IN_MEMORY=true` for zero in-memory fallback state.
+- `ENABLE_SHARED_RATE_LIMIT_FALLBACK_LOGS=false` to reduce noisy fallback logs/cost.
+- This assumes `supabase/migrations/20260304191500_phase4_shared_public_rate_limit_fix.sql` is already applied so shared RPC remains healthy.
+
+Storage/browser caching behavior:
+
+- Gallery thumbnails are served directly from Supabase public storage URLs and can be cached by browser/CDN.
+- Downloaded Liquid files are delivered via short-lived signed URLs; caching is handled by the storage response and browser, not by server in-memory buffers.
 
 ## Storage Reconciliation Cron
 

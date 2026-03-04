@@ -13,13 +13,6 @@ const ADMIN_MUTATION_HEADERS = {
   origin: "http://localhost:3000",
 };
 
-function encodeObjectPath(path: string): string {
-  return path
-    .split("/")
-    .map((segment) => encodeURIComponent(segment))
-    .join("/");
-}
-
 async function loginAs(
   page: Page,
   email: string,
@@ -206,11 +199,14 @@ test("admin upload succeeds and persists storage + db paths", async ({ page }) =
     const thumbnailResponse = await fetch(thumbnailPublicUrl.publicUrl);
     expect(thumbnailResponse.status).toBe(200);
 
-    const liquidPublicUrl = `${usersContext.supabaseUrl}/storage/v1/object/public/liquid-files/${encodeObjectPath(
-      liquidPath,
-    )}`;
-    const liquidResponse = await fetch(liquidPublicUrl);
-    expect(liquidResponse.status).toBe(200);
+    const downloadRedirectResponse = await page.request.get(
+      `/api/components/${encodeURIComponent(componentId)}/download`,
+      {
+        maxRedirects: 0,
+      },
+    );
+    expect(downloadRedirectResponse.status()).toBe(302);
+    expect(downloadRedirectResponse.headers().location).toContain("/storage/v1/object/sign/liquid-files/");
 
     const listResponse = await page.request.get("/api/admin/components");
     expect(listResponse.status()).toBe(200);

@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 
-import { apiError } from "@/lib/api/errors";
+import { NO_STORE_PRIVATE_CACHE_CONTROL, apiError } from "@/lib/api/errors";
 import { getComponentByIdWithFilePath, isValidComponentId } from "@/lib/components/component-by-id";
 import { getDownloadRateLimitKey } from "@/lib/rate-limit/download-key";
-import { consumeInMemoryRateLimit } from "@/lib/rate-limit/in-memory";
-import { getPublicStorageObjectUrl } from "@/lib/supabase/public-storage-url";
+import { consumeSharedRateLimit } from "@/lib/rate-limit/shared";
+import { createSignedStorageObjectUrl } from "@/lib/supabase/signed-storage-url";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 const DOWNLOAD_RATE_LIMIT_MAX_ENTRIES = 2_000;
@@ -30,27 +30,29 @@ export async function GET(request: Request, context: RouteContext) {
     return apiError(400, "invalid_component_id", "A valid component id is required.", requestId);
   }
 
-  const rateLimitResult = consumeInMemoryRateLimit(getDownloadRateLimitKey(request), {
-    windowMs: 60_000,
-    maxRequests: 20,
-    maxEntries: DOWNLOAD_RATE_LIMIT_MAX_ENTRIES,
-  });
-
-  if (!rateLimitResult.allowed) {
-    const response = apiError(
-      429,
-      "download_rate_limited",
-      "Too many download requests. Please try again shortly.",
-      requestId,
-    );
-
-    response.headers.set("Retry-After", String(rateLimitResult.retryAfterSeconds));
-    response.headers.set("Cache-Control", "private, no-store");
-    return response;
-  }
-
   try {
     const supabase = await createServerSupabaseClient();
+    const rateLimitResult = await consumeSharedRateLimit(supabase, {
+      key: getDownloadRateLimitKey(request),
+      scope: "public_download",
+      windowMs: 60_000,
+      maxRequests: 20,
+      fallbackMaxEntries: DOWNLOAD_RATE_LIMIT_MAX_ENTRIES,
+    });
+
+    if (!rateLimitResult.allowed) {
+      const response = apiError(
+        429,
+        "download_rate_limited",
+        "Too many download requests. Please try again shortly.",
+        requestId,
+      );
+
+      response.headers.set("Retry-After", String(rateLimitResult.retryAfterSeconds));
+      response.headers.set("Cache-Control", NO_STORE_PRIVATE_CACHE_CONTROL);
+      return response;
+    }
+
     const { data: component, error: componentError } = await getComponentByIdWithFilePath(
       supabase,
       componentId,
@@ -73,14 +75,31 @@ export async function GET(request: Request, context: RouteContext) {
     }
 
     const downloadName = `${sanitizeDownloadName(component.title)}.liquid`;
-    const publicDownloadUrl = getPublicStorageObjectUrl("liquid-files", component.file_path, {
-      downloadFileName: downloadName,
-    });
+    const { signedUrl, errorMessage } = await createSignedStorageObjectUrl(
+      "liquid-files",
+      component.file_path,
+      {
+        downloadFileName: downloadName,
+        expiresInSeconds: 60,
+      },
+    );
 
-    return NextResponse.redirect(publicDownloadUrl, {
+    if (!signedUrl) {
+      console.warn(
+        "[public-components-download] signed_url_failed",
+        JSON.stringify({
+          requestId,
+          componentId,
+          reason: errorMessage ?? "unknown_signed_url_error",
+        }),
+      );
+      return apiError(500, "download_failed", "Failed to start component download.", requestId);
+    }
+
+    return NextResponse.redirect(signedUrl, {
       status: 302,
       headers: {
-        "Cache-Control": "no-store",
+        "Cache-Control": NO_STORE_PRIVATE_CACHE_CONTROL,
       },
     });
   } catch (error) {

@@ -50,16 +50,78 @@ type SandboxClientProps = {
   component: PublicComponentById;
 };
 
-type LiquidSourceResponse = {
-  source: string;
-  schema: LiquidSchema | null;
-  diagnostics: LiquidSchemaDiagnostic[];
-};
-
 type RenderInput = {
   source: string;
   state: LiquidEditorState;
 };
+
+type LiquidRouteErrorResponse = {
+  error?: {
+    message?: string;
+  };
+};
+
+class LiquidRouteHttpError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "LiquidRouteHttpError";
+    this.status = status;
+  }
+}
+
+async function readLiquidRouteErrorMessage(response: Response): Promise<string> {
+  const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
+  if (!contentType.includes("application/json")) {
+    return "Failed to load Liquid source.";
+  }
+
+  const payload = (await response.json().catch(() => null)) as LiquidRouteErrorResponse | null;
+  const message = payload?.error?.message;
+  if (typeof message === "string" && message.trim().length > 0) {
+    return message;
+  }
+
+  return "Failed to load Liquid source.";
+}
+
+async function fetchLiquidSourceText(url: string, signal: AbortSignal): Promise<string> {
+  const response = await fetch(url, {
+    method: "GET",
+    signal,
+    cache: "force-cache",
+    redirect: "follow",
+  });
+
+  if (!response.ok) {
+    throw new LiquidRouteHttpError(
+      await readLiquidRouteErrorMessage(response),
+      response.status,
+    );
+  }
+
+  const source = await response.text();
+  if (!source) {
+    throw new LiquidRouteHttpError("Liquid source response was empty.", response.status);
+  }
+
+  return source;
+}
+
+async function loadLiquidSourceText(componentId: string, signal: AbortSignal): Promise<string> {
+  const baseRoute = `/api/components/${encodeURIComponent(componentId)}/liquid`;
+
+  try {
+    return await fetchLiquidSourceText(baseRoute, signal);
+  } catch (error) {
+    if (signal.aborted || error instanceof LiquidRouteHttpError) {
+      throw error;
+    }
+
+    return fetchLiquidSourceText(`${baseRoute}?mode=proxy`, signal);
+  }
+}
 
 export function SandboxClient({ component }: SandboxClientProps) {
   const [isPendingTransition, startTransition] = useTransition();
@@ -260,30 +322,15 @@ export function SandboxClient({ component }: SandboxClientProps) {
       setPreviewError(null);
 
       try {
-        const response = await fetch(`/api/components/${encodeURIComponent(component.id)}/liquid`, {
-          method: "GET",
-          signal: abortController.signal,
-          cache: "no-store",
-        });
-
-        if (!response.ok) {
-          const body = (await response.json().catch(() => ({}))) as {
-            error?: { message?: string };
-          };
-          throw new Error(body.error?.message ?? "Failed to load Liquid source.");
-        }
-
-        const payload = (await response.json()) as LiquidSourceResponse;
+        const sourceText = await loadLiquidSourceText(component.id, abortController.signal);
         if (!active) {
           return;
         }
 
-        const parsedResult = payload.schema
-          ? { schema: payload.schema, diagnostics: payload.diagnostics }
-          : parseLiquidSchema(payload.source);
+        const parsedResult = parseLiquidSchema(sourceText);
         const initialState = parsedResult.schema ? buildInitialEditorState(parsedResult.schema) : null;
 
-        setSource(payload.source);
+        setSource(sourceText);
         setSchema(parsedResult.schema);
         setDiagnostics(parsedResult.diagnostics);
         setEditorState(initialState);

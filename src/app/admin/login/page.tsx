@@ -1,8 +1,19 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 import { requireAdmin } from "@/lib/auth/require-admin";
 
 import { LoginForm } from "./LoginForm";
+
+export const metadata: Metadata = {
+  title: "Admin Login",
+  description: "Secure admin login for PressPlay Shopify Components.",
+  robots: {
+    index: false,
+    follow: false,
+    nocache: true,
+  },
+};
 
 type AdminLoginPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;

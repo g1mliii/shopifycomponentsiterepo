@@ -29,6 +29,12 @@ type PublicCategoryRow = {
   category: string | null;
 };
 
+type PublicComponentsBatchRpcRow = {
+  components: unknown;
+  total: number | string | null;
+  categories: unknown;
+};
+
 type PublicSupabaseClient = SupabaseClient;
 
 type CacheEntry<T> = {
@@ -39,6 +45,11 @@ type CacheEntry<T> = {
 
 const publicResultsCache = new Map<string, CacheEntry<PublicComponentsResult>>();
 const publicCategoriesCache = new Map<string, CacheEntry<string[]>>();
+const PUBLIC_COMPONENTS_BATCH_RPC_NAME = "list_public_components_batch";
+
+function isPublicCacheDisabled(): boolean {
+  return process.env.DISABLE_PUBLIC_COMPONENTS_CACHE === "true";
+}
 
 function serializeQueryKey(query: PublicComponentsQuery): string {
   return JSON.stringify({
@@ -129,6 +140,149 @@ function assertNoSupabaseError(error: PostgrestError | null, fallbackMessage: st
   throw new Error(`${fallbackMessage}: ${error.message}`);
 }
 
+function isMissingBatchRpcError(error: PostgrestError): boolean {
+  if (error.code === "PGRST202") {
+    return true;
+  }
+
+  const message = error.message.toLowerCase();
+  return message.includes("could not find the function");
+}
+
+function mapRowsToPublicCards(rows: PublicComponentsRow[]): PublicComponentCard[] {
+  return rows.map((row) => ({
+    id: row.id,
+    title: row.title,
+    category: row.category,
+    thumbnail_path: row.thumbnail_path,
+    created_at: row.created_at,
+    thumbnail_url: getPublicThumbnailUrl(row.thumbnail_path),
+    media_kind: getMediaKindFromThumbnailPath(row.thumbnail_path),
+  }));
+}
+
+function parseBatchRpcRows(value: unknown): PublicComponentsRow[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const rows: PublicComponentsRow[] = [];
+
+  for (const candidate of value) {
+    if (!candidate || typeof candidate !== "object") {
+      return null;
+    }
+
+    const row = candidate as Record<string, unknown>;
+    if (
+      typeof row.id !== "string" ||
+      typeof row.title !== "string" ||
+      typeof row.category !== "string" ||
+      typeof row.thumbnail_path !== "string" ||
+      typeof row.created_at !== "string"
+    ) {
+      return null;
+    }
+
+    rows.push({
+      id: row.id,
+      title: row.title,
+      category: row.category,
+      thumbnail_path: row.thumbnail_path,
+      created_at: row.created_at,
+    });
+  }
+
+  return rows;
+}
+
+function parseBatchRpcCategories(value: unknown): string[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const categories: string[] = [];
+  for (const candidate of value) {
+    if (typeof candidate !== "string") {
+      return null;
+    }
+
+    const normalized = candidate.trim().toLowerCase();
+    if (!normalized) {
+      continue;
+    }
+
+    categories.push(normalized);
+  }
+
+  return categories;
+}
+
+function parseBatchRpcTotal(value: number | string | null): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.max(0, Math.floor(value));
+  }
+
+  if (typeof value === "string" && value.length > 0) {
+    const parsed = Number.parseInt(value, 10);
+    if (Number.isFinite(parsed)) {
+      return Math.max(0, parsed);
+    }
+  }
+
+  return null;
+}
+
+async function listPublicComponentsViaBatchRpc(
+  supabase: PublicSupabaseClient,
+  query: PublicComponentsQuery,
+): Promise<PublicComponentsResult | null> {
+  const { data, error } = await supabase.rpc(PUBLIC_COMPONENTS_BATCH_RPC_NAME, {
+    p_page: query.page,
+    p_limit: query.limit,
+    p_query: query.query || null,
+    p_category: query.category,
+  });
+
+  if (error) {
+    if (isMissingBatchRpcError(error)) {
+      return null;
+    }
+
+    throw new Error(`Failed to load components: ${error.message}`);
+  }
+
+  if (!Array.isArray(data) || data.length === 0) {
+    throw new Error("Failed to load components: empty batched payload.");
+  }
+
+  const firstRow = data[0] as PublicComponentsBatchRpcRow | undefined;
+  if (!firstRow || typeof firstRow !== "object") {
+    throw new Error("Failed to load components: malformed batched payload.");
+  }
+
+  const parsedRows = parseBatchRpcRows(firstRow.components);
+  const parsedCategories = parseBatchRpcCategories(firstRow.categories);
+  const parsedTotal = parseBatchRpcTotal(firstRow.total);
+
+  if (!parsedRows || !parsedCategories || parsedTotal === null) {
+    throw new Error("Failed to load components: invalid batched payload shape.");
+  }
+
+  const totalPages = parsedTotal > 0 ? Math.ceil(parsedTotal / query.limit) : 1;
+
+  return {
+    components: mapRowsToPublicCards(parsedRows),
+    page: query.page,
+    limit: query.limit,
+    total: parsedTotal,
+    totalPages,
+    query: query.query,
+    category: query.category,
+    categories: parsedCategories,
+  };
+}
+
 function escapeLikePattern(value: string): string {
   return value.replace(/[\\%_]/g, "\\$&");
 }
@@ -190,6 +344,10 @@ export async function listPublicCategoriesCached(
   supabase: PublicSupabaseClient,
   nowMs = Date.now(),
 ): Promise<string[]> {
+  if (isPublicCacheDisabled()) {
+    return listPublicCategories(supabase);
+  }
+
   pruneExpiredEntries(publicCategoriesCache, nowMs);
 
   const cached = getFromCache(publicCategoriesCache, PUBLIC_CATEGORIES_CACHE_KEY, nowMs);
@@ -212,6 +370,18 @@ export async function listPublicCategoriesCached(
 }
 
 export async function listPublicComponents(
+  supabase: PublicSupabaseClient,
+  query: PublicComponentsQuery,
+): Promise<PublicComponentsResult> {
+  const batchedResult = await listPublicComponentsViaBatchRpc(supabase, query);
+  if (batchedResult) {
+    return batchedResult;
+  }
+
+  return listPublicComponentsLegacy(supabase, query);
+}
+
+async function listPublicComponentsLegacy(
   supabase: PublicSupabaseClient,
   query: PublicComponentsQuery,
 ): Promise<PublicComponentsResult> {
@@ -245,16 +415,7 @@ export async function listPublicComponents(
   const rows = (componentsResponse.data ?? []) as PublicComponentsRow[];
   const total = typeof componentsResponse.count === "number" ? componentsResponse.count : 0;
   const totalPages = total > 0 ? Math.ceil(total / query.limit) : 1;
-
-  const components: PublicComponentCard[] = rows.map((row) => ({
-    id: row.id,
-    title: row.title,
-    category: row.category,
-    thumbnail_path: row.thumbnail_path,
-    created_at: row.created_at,
-    thumbnail_url: getPublicThumbnailUrl(row.thumbnail_path),
-    media_kind: getMediaKindFromThumbnailPath(row.thumbnail_path),
-  }));
+  const components = mapRowsToPublicCards(rows);
 
   return {
     components,
@@ -273,6 +434,10 @@ export async function listPublicComponentsCached(
   query: PublicComponentsQuery,
   nowMs = Date.now(),
 ): Promise<PublicComponentsResult> {
+  if (isPublicCacheDisabled()) {
+    return listPublicComponents(supabase, query);
+  }
+
   pruneExpiredEntries(publicResultsCache, nowMs);
 
   const cacheKey = serializeQueryKey(query);

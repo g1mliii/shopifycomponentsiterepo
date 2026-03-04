@@ -40,6 +40,7 @@ for (const [key, value] of Object.entries(process.env)) {
 }
 
 Object.assign(webServerEnv, dotEnvLocalValues);
+webServerEnv.DISABLE_PUBLIC_COMPONENTS_CACHE = "true";
 
 export default defineConfig({
   testDir: "./e2e",

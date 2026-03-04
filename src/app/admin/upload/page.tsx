@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -6,6 +7,16 @@ import { requireAdmin } from "@/lib/auth/require-admin";
 import { ComponentsManager } from "./ComponentsManager";
 
 const ADMIN_COMPONENT_LIST_LIMIT = 50;
+
+export const metadata: Metadata = {
+  title: "Admin Upload",
+  description: "Admin upload dashboard for PressPlay Shopify Components.",
+  robots: {
+    index: false,
+    follow: false,
+    nocache: true,
+  },
+};
 
 type StoredComponent = {
   id: string;

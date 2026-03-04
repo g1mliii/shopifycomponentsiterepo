@@ -8,6 +8,8 @@ export interface ApiErrorBody {
   };
 }
 
+export const NO_STORE_PRIVATE_CACHE_CONTROL = "private, no-store";
+
 export function apiError(
   status: number,
   code: string,
@@ -24,6 +26,9 @@ export function apiError(
     },
     {
       status,
+      headers: {
+        "Cache-Control": NO_STORE_PRIVATE_CACHE_CONTROL,
+      },
     },
   );
 }

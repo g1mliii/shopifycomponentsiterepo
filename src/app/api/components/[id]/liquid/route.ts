@@ -1,18 +1,25 @@
 import { NextResponse } from "next/server";
 
-import { apiError } from "@/lib/api/errors";
+import { NO_STORE_PRIVATE_CACHE_CONTROL, apiError } from "@/lib/api/errors";
 import { getComponentByIdWithFilePath, isValidComponentId } from "@/lib/components/component-by-id";
-import { parseLiquidSchema } from "@/lib/liquid/schema-parse";
 import { getDownloadRateLimitKey } from "@/lib/rate-limit/download-key";
-import { consumeInMemoryRateLimit } from "@/lib/rate-limit/in-memory";
-import { getPublicStorageObjectUrl } from "@/lib/supabase/public-storage-url";
+import { consumeSharedRateLimit } from "@/lib/rate-limit/shared";
+import { createSignedStorageObjectUrl } from "@/lib/supabase/signed-storage-url";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 const LIQUID_ROUTE_RATE_LIMIT_MAX_ENTRIES = 2_000;
+const LIQUID_ROUTE_REDIRECT_CACHE_CONTROL = "public, max-age=30, stale-while-revalidate=120";
+const LIQUID_ROUTE_PROXY_SOURCE_CACHE_CONTROL = "public, max-age=300, stale-while-revalidate=86400";
+const LIQUID_SIGNED_URL_EXPIRY_SECONDS = 120;
 
 type RouteContext = {
   params: Promise<{ id: string }>;
 };
+
+function isProxyModeRequest(request: Request): boolean {
+  const mode = new URL(request.url).searchParams.get("mode");
+  return mode === "proxy";
+}
 
 export async function GET(request: Request, context: RouteContext) {
   const requestId = crypto.randomUUID();
@@ -22,26 +29,28 @@ export async function GET(request: Request, context: RouteContext) {
     return apiError(400, "invalid_component_id", "A valid component id is required.", requestId);
   }
 
-  const rateLimitResult = consumeInMemoryRateLimit(getDownloadRateLimitKey(request), {
-    windowMs: 60_000,
-    maxRequests: 60,
-    maxEntries: LIQUID_ROUTE_RATE_LIMIT_MAX_ENTRIES,
-  });
-
-  if (!rateLimitResult.allowed) {
-    const response = apiError(
-      429,
-      "liquid_rate_limited",
-      "Too many sandbox requests. Please try again shortly.",
-      requestId,
-    );
-    response.headers.set("Retry-After", String(rateLimitResult.retryAfterSeconds));
-    response.headers.set("Cache-Control", "private, no-store");
-    return response;
-  }
-
   try {
     const supabase = await createServerSupabaseClient();
+    const rateLimitResult = await consumeSharedRateLimit(supabase, {
+      key: getDownloadRateLimitKey(request),
+      scope: "public_liquid",
+      windowMs: 60_000,
+      maxRequests: 60,
+      fallbackMaxEntries: LIQUID_ROUTE_RATE_LIMIT_MAX_ENTRIES,
+    });
+
+    if (!rateLimitResult.allowed) {
+      const response = apiError(
+        429,
+        "liquid_rate_limited",
+        "Too many sandbox requests. Please try again shortly.",
+        requestId,
+      );
+      response.headers.set("Retry-After", String(rateLimitResult.retryAfterSeconds));
+      response.headers.set("Cache-Control", NO_STORE_PRIVATE_CACHE_CONTROL);
+      return response;
+    }
+
     const { data: component, error: componentError } = await getComponentByIdWithFilePath(supabase, id);
 
     if (componentError) {
@@ -60,8 +69,36 @@ export async function GET(request: Request, context: RouteContext) {
       return apiError(404, "component_not_found", "Component not found.", requestId);
     }
 
-    const publicSourceUrl = getPublicStorageObjectUrl("liquid-files", component.file_path);
-    const sourceResponse = await fetch(publicSourceUrl, {
+    const { signedUrl, errorMessage } = await createSignedStorageObjectUrl(
+      "liquid-files",
+      component.file_path,
+      {
+        expiresInSeconds: LIQUID_SIGNED_URL_EXPIRY_SECONDS,
+      },
+    );
+
+    if (!signedUrl) {
+      console.warn(
+        "[public-component-liquid] signed_url_failed",
+        JSON.stringify({
+          requestId,
+          componentId: id,
+          reason: errorMessage ?? "unknown_signed_url_error",
+        }),
+      );
+      return apiError(500, "liquid_lookup_failed", "Failed to load component source.", requestId);
+    }
+
+    if (!isProxyModeRequest(request)) {
+      return NextResponse.redirect(signedUrl, {
+        status: 307,
+        headers: {
+          "Cache-Control": LIQUID_ROUTE_REDIRECT_CACHE_CONTROL,
+        },
+      });
+    }
+
+    const sourceResponse = await fetch(signedUrl, {
       cache: "no-store",
     });
 
@@ -78,22 +115,14 @@ export async function GET(request: Request, context: RouteContext) {
     }
 
     const source = await sourceResponse.text();
-    const parsed = parseLiquidSchema(source);
 
-    return NextResponse.json(
-      {
-        source,
-        schema: parsed.schema,
-        diagnostics: parsed.diagnostics,
-        requestId,
+    return new NextResponse(source, {
+      status: 200,
+      headers: {
+        "Cache-Control": LIQUID_ROUTE_PROXY_SOURCE_CACHE_CONTROL,
+        "Content-Type": "text/plain; charset=utf-8",
       },
-      {
-        status: 200,
-        headers: {
-          "Cache-Control": "private, no-store",
-        },
-      },
-    );
+    });
   } catch (error) {
     console.warn(
       "[public-component-liquid] unexpected_failure",

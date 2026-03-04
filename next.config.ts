@@ -24,49 +24,8 @@ function getSupabaseImagePattern():
   }
 }
 
-function getSupabaseOrigin(): string | null {
-  const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  if (!rawUrl) {
-    return null;
-  }
-
-  try {
-    return new URL(rawUrl).origin;
-  } catch {
-    return null;
-  }
-}
-
-function buildCspReportOnlyValue(): string {
-  const connectSources = new Set(["'self'", "https://*.supabase.co", "wss://*.supabase.co"]);
-  const imgSources = new Set(["'self'", "data:", "blob:", "https://*.supabase.co"]);
-  const mediaSources = new Set(["'self'", "data:", "blob:", "https://*.supabase.co"]);
-  const supabaseOrigin = getSupabaseOrigin();
-
-  if (supabaseOrigin) {
-    connectSources.add(supabaseOrigin);
-    imgSources.add(supabaseOrigin);
-    mediaSources.add(supabaseOrigin);
-  }
-
-  return [
-    "default-src 'self'",
-    "base-uri 'self'",
-    "frame-ancestors 'none'",
-    "object-src 'none'",
-    "form-action 'self'",
-    "img-src " + Array.from(imgSources).join(" "),
-    "media-src " + Array.from(mediaSources).join(" "),
-    "font-src 'self' data:",
-    "style-src 'self' 'unsafe-inline'",
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-    "connect-src " + Array.from(connectSources).join(" "),
-    "worker-src 'self' blob:",
-  ].join("; ");
-}
-
 const supabaseImagePattern = getSupabaseImagePattern();
-const cspReportOnlyValue = buildCspReportOnlyValue();
+const isProduction = process.env.NODE_ENV === "production";
 
 const nextConfig: NextConfig = {
   turbopack: {
@@ -124,6 +83,24 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
+        source: "/admin/:path*",
+        headers: [
+          {
+            key: "X-Robots-Tag",
+            value: "noindex, nofollow, noarchive, nosnippet",
+          },
+        ],
+      },
+      {
+        source: "/api/:path*",
+        headers: [
+          {
+            key: "X-Robots-Tag",
+            value: "noindex, nofollow, noarchive, nosnippet",
+          },
+        ],
+      },
+      {
         source: "/:path*",
         headers: [
           {
@@ -142,10 +119,14 @@ const nextConfig: NextConfig = {
             key: "Permissions-Policy",
             value: "camera=(), microphone=(), geolocation=()",
           },
-          {
-            key: "Content-Security-Policy-Report-Only",
-            value: cspReportOnlyValue,
-          },
+          ...(isProduction
+            ? [
+                {
+                  key: "Strict-Transport-Security",
+                  value: "max-age=31536000; includeSubDomains; preload",
+                },
+              ]
+            : []),
         ],
       },
     ];

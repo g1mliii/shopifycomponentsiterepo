@@ -44,7 +44,7 @@ export async function GET(_request: Request, context: RouteContext) {
       {
         status: 200,
         headers: {
-          "Cache-Control": "public, max-age=30, stale-while-revalidate=120",
+          "Cache-Control": "public, max-age=300, stale-while-revalidate=3600",
         },
       },
     );

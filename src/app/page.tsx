@@ -1,14 +1,43 @@
+import type { Metadata } from "next";
+
 import { GalleryFilters } from "@/components/public-gallery/GalleryFilters";
 import { PaginationControls } from "@/components/public-gallery/PaginationControls";
 import { PublicComponentCard } from "@/components/public-gallery/PublicComponentCard";
 import {
+  getPublicThumbnailUrl,
   listPublicComponentsCached,
   parsePublicComponentsQuery,
 } from "@/lib/components/public-query";
 import type { PublicComponentsResult } from "@/lib/components/public-types";
+import {
+  BUSINESS_NAME,
+  SITE_DESCRIPTION,
+  SITE_NAME,
+  getAbsoluteUrl,
+  serializeJsonLd,
+} from "@/lib/seo/site";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 const EAGER_THUMBNAIL_COUNT = 3;
+
+export const metadata: Metadata = {
+  title: "Shopify Components Library",
+  description: SITE_DESCRIPTION,
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    type: "website",
+    title: SITE_NAME,
+    description: SITE_DESCRIPTION,
+    url: getAbsoluteUrl("/"),
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: SITE_NAME,
+    description: SITE_DESCRIPTION,
+  },
+};
 
 type HomePageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -60,8 +89,76 @@ export default async function HomePage({ searchParams }: HomePageProps) {
     );
   }
 
+  const homeUrl = getAbsoluteUrl("/");
+  const searchTargetUrl = `${homeUrl}?query={search_term_string}`;
+  const webSiteJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    name: SITE_NAME,
+    url: homeUrl,
+    description: SITE_DESCRIPTION,
+    inLanguage: "en",
+    publisher: {
+      "@type": "Organization",
+      name: BUSINESS_NAME,
+      url: homeUrl,
+    },
+    potentialAction: {
+      "@type": "SearchAction",
+      target: searchTargetUrl,
+      "query-input": "required name=search_term_string",
+    },
+  };
+
+  const collectionPageJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "CollectionPage",
+    name: `${SITE_NAME} Component Catalog`,
+    description: SITE_DESCRIPTION,
+    url: homeUrl,
+    isPartOf: {
+      "@type": "WebSite",
+      name: SITE_NAME,
+      url: homeUrl,
+    },
+    mainEntity: {
+      "@type": "ItemList",
+      numberOfItems: result.total,
+    },
+  };
+
+  const itemListJsonLd =
+    result.components.length === 0
+      ? null
+      : {
+          "@context": "https://schema.org",
+          "@type": "ItemList",
+          numberOfItems: result.total,
+          itemListElement: result.components.slice(0, 10).map((component, index) => ({
+            "@type": "ListItem",
+            position: index + 1,
+            url: getAbsoluteUrl(`/components/${component.id}/sandbox`),
+            name: component.title,
+            image: getPublicThumbnailUrl(component.thumbnail_path),
+          })),
+        };
+
   return (
     <main className="relative mx-auto min-h-dvh w-full max-w-6xl overflow-hidden px-5 py-8 sm:px-6 sm:py-10">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(webSiteJsonLd) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(collectionPageJsonLd) }}
+      />
+      {itemListJsonLd ? (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: serializeJsonLd(itemListJsonLd) }}
+        />
+      ) : null}
       <div
         aria-hidden="true"
         className="pointer-events-none absolute -top-40 -left-40 h-[460px] w-[460px] rounded-full opacity-[0.24]"

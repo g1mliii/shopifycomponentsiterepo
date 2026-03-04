@@ -1,7 +1,16 @@
 runConfig:
   minInstances: 0
-  maxInstances: 2
+  maxInstances: 1
+  cpu: 1
+  memoryMiB: 512
+  concurrency: 80
 
 env:
   - variable: SUPABASE_SERVICE_ROLE_KEY
     secret: SUPABASE_SERVICE_ROLE_KEY
+  - variable: DISABLE_PUBLIC_COMPONENTS_CACHE
+    value: "true"
+  - variable: DISABLE_RATE_LIMIT_FALLBACK_IN_MEMORY
+    value: "true"
+  - variable: ENABLE_SHARED_RATE_LIMIT_FALLBACK_LOGS
+    value: "false"

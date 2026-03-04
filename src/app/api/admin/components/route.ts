@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { type ServerSupabaseClient, requireAdmin } from "@/lib/auth/require-admin";
-import { apiError } from "@/lib/api/errors";
+import { NO_STORE_PRIVATE_CACHE_CONTROL, apiError } from "@/lib/api/errors";
 import { guardAdminMutationRequest } from "@/lib/security/admin-request-guard";
 import {
   type ValidationIssue,
@@ -53,6 +53,10 @@ const COMPONENT_SELECT =
 const COMPONENT_ID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DEFAULT_COMPONENT_LIST_LIMIT = 50;
 const MAX_COMPONENT_LIST_LIMIT = 100;
+const ENABLE_ADMIN_AUDIT_SUCCESS_LOGS =
+  process.env.ENABLE_ADMIN_AUDIT_SUCCESS_LOGS === "true";
+const ENABLE_ADMIN_AUDIT_CLIENT_ERROR_LOGS =
+  process.env.ENABLE_ADMIN_AUDIT_CLIENT_ERROR_LOGS === "true";
 
 function parseComponentListLimit(searchParams: URLSearchParams): number {
   const rawLimit = searchParams.get("limit");
@@ -69,7 +73,21 @@ function parseComponentListLimit(searchParams: URLSearchParams): number {
 }
 
 function logComponentsAudit(event: ComponentsAuditEvent) {
-  console.info("[admin-components]", JSON.stringify(event));
+  if (event.status >= 500) {
+    console.warn("[admin-components]", JSON.stringify(event));
+    return;
+  }
+
+  if (event.status >= 400) {
+    if (ENABLE_ADMIN_AUDIT_CLIENT_ERROR_LOGS) {
+      console.info("[admin-components]", JSON.stringify(event));
+    }
+    return;
+  }
+
+  if (ENABLE_ADMIN_AUDIT_SUCCESS_LOGS) {
+    console.info("[admin-components]", JSON.stringify(event));
+  }
 }
 
 function firstValidationMessage(issues: ValidationIssue[]): string {
@@ -233,6 +251,9 @@ export async function GET(request: Request) {
     },
     {
       status: 200,
+      headers: {
+        "Cache-Control": NO_STORE_PRIVATE_CACHE_CONTROL,
+      },
     },
   );
 }
@@ -335,6 +356,7 @@ export async function POST(request: Request) {
         .from("liquid-files")
         .upload(filePath, validationResult.data.liquidFile, {
           contentType: validationResult.data.liquidMimeType || "application/octet-stream",
+          cacheControl: "31536000",
           upsert: false,
         }),
     ]);
@@ -416,6 +438,9 @@ export async function POST(request: Request) {
       },
       {
         status: 201,
+        headers: {
+          "Cache-Control": NO_STORE_PRIVATE_CACHE_CONTROL,
+        },
       },
     );
   } catch {
@@ -558,6 +583,9 @@ export async function DELETE(request: Request) {
       },
       {
         status: 200,
+        headers: {
+          "Cache-Control": NO_STORE_PRIVATE_CACHE_CONTROL,
+        },
       },
     );
   }
@@ -579,6 +607,9 @@ export async function DELETE(request: Request) {
     },
     {
       status: 200,
+      headers: {
+        "Cache-Control": NO_STORE_PRIVATE_CACHE_CONTROL,
+      },
     },
   );
 }

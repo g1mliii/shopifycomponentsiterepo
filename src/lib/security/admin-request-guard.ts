@@ -1,5 +1,6 @@
 const ADMIN_CSRF_HEADER = "x-admin-csrf";
 const REQUIRED_ADMIN_CSRF_VALUE = "1";
+const ADMIN_ALLOWED_ORIGINS_ENV = "ADMIN_ALLOWED_ORIGINS";
 
 type AdminRequestGuardSuccess = {
   ok: true;
@@ -59,7 +60,7 @@ function getRequestHost(request: Request): string | null {
   return host || null;
 }
 
-function getAllowedOrigins(request: Request): Set<string> {
+function getConfiguredAllowedOrigins(): Set<string> {
   const allowedOrigins = new Set<string>();
 
   const configuredAppOrigin = normalizeOrigin(process.env.APP_ORIGIN ?? null);
@@ -67,6 +68,19 @@ function getAllowedOrigins(request: Request): Set<string> {
     allowedOrigins.add(configuredAppOrigin);
   }
 
+  const configuredAdditionalOrigins = process.env[ADMIN_ALLOWED_ORIGINS_ENV] ?? "";
+  for (const rawOrigin of configuredAdditionalOrigins.split(",")) {
+    const normalizedOrigin = normalizeOrigin(rawOrigin.trim() || null);
+    if (normalizedOrigin) {
+      allowedOrigins.add(normalizedOrigin);
+    }
+  }
+
+  return allowedOrigins;
+}
+
+function getAllowedOriginsFromRequest(request: Request): Set<string> {
+  const allowedOrigins = new Set<string>();
   const host = getRequestHost(request);
   if (host) {
     const protocol = getRequestProtocol(request);
@@ -74,6 +88,10 @@ function getAllowedOrigins(request: Request): Set<string> {
   }
 
   return allowedOrigins;
+}
+
+function isProduction(): boolean {
+  return process.env.NODE_ENV === "production";
 }
 
 export function guardAdminMutationRequest(request: Request): AdminRequestGuardResult {
@@ -96,7 +114,11 @@ export function guardAdminMutationRequest(request: Request): AdminRequestGuardRe
     };
   }
 
-  const allowedOrigins = getAllowedOrigins(request);
+  const configuredOrigins = getConfiguredAllowedOrigins();
+  const allowedOrigins =
+    configuredOrigins.size > 0 || isProduction()
+      ? configuredOrigins
+      : getAllowedOriginsFromRequest(request);
   if (allowedOrigins.size === 0) {
     return {
       ok: false,
