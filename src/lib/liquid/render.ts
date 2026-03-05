@@ -4,7 +4,11 @@ import type { LiquidEditorState } from "./schema-types";
 
 const TEMPLATE_CACHE_MAX_ENTRIES = 50;
 const SCHEMA_BLOCK_PATTERN = /{%\s*schema\s*%}([\s\S]*?){%\s*endschema\s*%}/i;
+const STYLE_BLOCK_PATTERN = /{%\s*style\s*%}([\s\S]*?){%\s*endstyle\s*%}/gi;
+const STYLESHEET_BLOCK_PATTERN = /{%\s*stylesheet\s*%}([\s\S]*?){%\s*endstylesheet\s*%}/gi;
+const JAVASCRIPT_BLOCK_PATTERN = /{%\s*javascript\s*%}([\s\S]*?){%\s*endjavascript\s*%}/gi;
 const PREVIEW_ABORT_ERROR_NAME = "AbortError";
+const PREVIEW_SECTION_ID = "pressplay-preview-section";
 
 const templateCache = new Map<string, Template[]>();
 
@@ -78,30 +82,52 @@ function stripSchemaBlock(source: string): string {
   return `${source.slice(0, fullStart)}${source.slice(fullEnd)}`;
 }
 
+function escapeHtmlAttribute(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("\"", "&quot;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
+function normalizeShopifyThemeBlocks(source: string): string {
+  return source
+    .replace(STYLE_BLOCK_PATTERN, (_match, css) => `<style>${css}</style>`)
+    .replace(STYLESHEET_BLOCK_PATTERN, (_match, css) => `<style>${css}</style>`)
+    .replace(JAVASCRIPT_BLOCK_PATTERN, (_match, javascript) => `<script>${javascript}</script>`);
+}
+
 async function getCompiledTemplate(source: string): Promise<Template[]> {
   const withoutSchema = stripSchemaBlock(source);
-  const cached = templateCache.get(withoutSchema);
+  const normalizedSource = normalizeShopifyThemeBlocks(withoutSchema);
+  const cached = templateCache.get(normalizedSource);
   if (cached) {
-    touchCacheEntry(withoutSchema, cached);
+    touchCacheEntry(normalizedSource, cached);
     return cached;
   }
 
-  const compiled = await liquidEngine.parse(withoutSchema);
-  touchCacheEntry(withoutSchema, compiled);
+  const compiled = await liquidEngine.parse(normalizedSource);
+  touchCacheEntry(normalizedSource, compiled);
   return compiled;
 }
 
 function toLiquidContext(state: LiquidEditorState): Record<string, unknown> {
   return {
     section: {
+      id: PREVIEW_SECTION_ID,
       settings: state.sectionSettings,
       blocks: state.blocks.map((block, index) => ({
         id: block.id || `block-${index + 1}`,
         type: block.type,
         settings: block.settings,
+        shopify_attributes: `data-block-id="${escapeHtmlAttribute(block.id || `block-${index + 1}`)}" data-block-type="${escapeHtmlAttribute(block.type)}"`,
       })),
     },
   };
+}
+
+function wrapInPreviewSection(html: string): string {
+  return `<div id="shopify-section-${PREVIEW_SECTION_ID}" class="shopify-section">${html}</div>`;
 }
 
 export interface LiquidRenderResult {
@@ -117,10 +143,11 @@ export async function renderLiquidPreview(
   const startedAt = Date.now();
   const compiledTemplate = await withAbortSignal(signal, () => getCompiledTemplate(source));
   throwIfAborted(signal);
-  const html = await withAbortSignal(signal, () =>
+  const renderedHtml = await withAbortSignal(signal, () =>
     liquidEngine.render(compiledTemplate, toLiquidContext(state)),
   );
   throwIfAborted(signal);
+  const html = wrapInPreviewSection(renderedHtml);
 
   return {
     html,

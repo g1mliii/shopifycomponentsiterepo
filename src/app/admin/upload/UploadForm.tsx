@@ -1,16 +1,48 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ChangeEvent,
+  FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
+
+import { SandboxWorkspace } from "@/app/components/[id]/sandbox/SandboxWorkspace";
+import {
+  KEYBOARD_SPLIT_STEP_PERCENT,
+  MAX_SPLIT_PERCENT,
+  MIN_SPLIT_PERCENT,
+  PREVIEW_ENQUEUE_DEBOUNCE_MS,
+  applyMediaOverrides,
+  buildPreviewDocument,
+  clampSplitPercent,
+  parseSettingPath,
+} from "@/app/components/[id]/sandbox/sandbox-helpers";
 
 import { renderLiquidPreview } from "@/lib/liquid/render";
+import { applyLiquidPreviewFallbacks } from "@/lib/liquid/preview-fallbacks";
 import { parseLiquidSchema } from "@/lib/liquid/schema-parse";
-import { buildInitialEditorState } from "@/lib/liquid/schema-patch";
+import { buildInitialEditorState, createBlockInstanceFromDefinition, patchLiquidSchemaDefaults } from "@/lib/liquid/schema-patch";
+import { buildSettingLookup } from "@/lib/liquid/visibility-hints";
+import type {
+  LiquidEditorState,
+  LiquidSchema,
+  LiquidSchemaDiagnostic,
+  LiquidSchemaSetting,
+  LiquidSettingJsonValue,
+} from "@/lib/liquid/schema-types";
 
 const MAX_RECORDING_FRAME_RATE = 30;
 const THUMBNAIL_MAX_BYTES = 25 * 1024 * 1024;
 const RECORDING_MAX_BYTES = 24 * 1024 * 1024;
 const RECORDING_MAX_DURATION_MS = 30_000;
-const PREVIEW_PLACEHOLDER_TEXT = "Select a .liquid file above, then render a local preview.";
+const PREVIEW_PLACEHOLDER_TEXT = "Select a .liquid file above to load split-view controls and preview.";
 
 const RECORDING_MIME_CANDIDATES = [
   "video/mp4;codecs=avc1.42E01E,mp4a.40.2",
@@ -46,28 +78,6 @@ type UploadErrorResponse = {
 type UploadFormProps = {
   onUploaded?: (component: UploadedComponent) => void;
 };
-
-function buildLocalPreviewDocument(html: string): string {
-  return `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <style>
-      :root { color-scheme: light; }
-      body {
-        margin: 0;
-        padding: 16px;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-        color: #111827;
-        background: #ffffff;
-      }
-      img, video { max-width: 100%; height: auto; }
-    </style>
-  </head>
-  <body>${html}</body>
-</html>`;
-}
 
 function getPreferredRecordingMimeType(): string | null {
   if (typeof MediaRecorder === "undefined") {
@@ -115,9 +125,16 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
 
   const [localLiquidSource, setLocalLiquidSource] = useState("");
   const [localLiquidFileName, setLocalLiquidFileName] = useState<string | null>(null);
+  const [schema, setSchema] = useState<LiquidSchema | null>(null);
+  const [diagnostics, setDiagnostics] = useState<LiquidSchemaDiagnostic[]>([]);
+  const [editorState, setEditorState] = useState<LiquidEditorState | null>(null);
+  const [pendingBlockType, setPendingBlockType] = useState<string>("");
+  const [mediaOverrides, setMediaOverrides] = useState<Record<string, string>>({});
   const [previewHtml, setPreviewHtml] = useState("");
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [isRenderingPreview, setIsRenderingPreview] = useState(false);
+  const [splitPercent, setSplitPercent] = useState(44);
+  const [isResizing, setIsResizing] = useState(false);
   const [isRecordingPreview, setIsRecordingPreview] = useState(false);
   const [recordingMessage, setRecordingMessage] = useState<string | null>(null);
   const [recordingError, setRecordingError] = useState<string | null>(null);
@@ -126,6 +143,7 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
   const localFileLoadTokenRef = useRef(0);
   const inFlightControllerRef = useRef<AbortController | null>(null);
   const previewRenderControllerRef = useRef<AbortController | null>(null);
+  const previewDebounceTimerRef = useRef<number | null>(null);
   const liquidInputRef = useRef<HTMLInputElement | null>(null);
   const thumbnailInputRef = useRef<HTMLInputElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -135,8 +153,90 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
   const recordingStopReasonRef = useRef<"manual" | "max_size" | "max_duration" | null>(null);
   const recordingStartInFlightRef = useRef(false);
   const recordingAutoStopTimerRef = useRef<number | null>(null);
+  const workspaceRef = useRef<HTMLDivElement | null>(null);
+  const blockIdCounterRef = useRef(0);
+  const activePointerIdRef = useRef<number | null>(null);
+  const resizeRafRef = useRef<number | null>(null);
+  const resizePendingPercentRef = useRef<number | null>(null);
+  const resizeBoundsRef = useRef<{ left: number; width: number } | null>(null);
+  const liveSplitPercentRef = useRef(splitPercent);
+  const mediaOverridesRef = useRef<Record<string, string>>(mediaOverrides);
 
-  const previewDocument = useMemo(() => buildLocalPreviewDocument(previewHtml), [previewHtml]);
+  const previewDocument = useMemo(() => buildPreviewDocument(previewHtml), [previewHtml]);
+  const workspaceStyle = useMemo(
+    () =>
+      ({
+        "--sandbox-left-pane": `${splitPercent}%`,
+        gridTemplateColumns: "minmax(14rem, var(--sandbox-left-pane)) 1.5rem minmax(14rem, 1fr)",
+        height: "100%",
+        minHeight: 0,
+      }) as CSSProperties,
+    [splitPercent],
+  );
+  const effectiveEditorState = useMemo(() => {
+    if (!editorState) {
+      return null;
+    }
+
+    const withMediaOverrides = applyMediaOverrides(editorState, mediaOverrides);
+    if (!schema) {
+      return withMediaOverrides;
+    }
+
+    return applyLiquidPreviewFallbacks(schema, withMediaOverrides);
+  }, [editorState, mediaOverrides, schema]);
+
+  const blockDefinitionByType = useMemo(() => {
+    const map = new Map<string, LiquidSchema["blocks"][number]>();
+    for (const definition of schema?.blocks ?? []) {
+      map.set(definition.type, definition);
+    }
+    return map;
+  }, [schema]);
+
+  const sectionUnsupportedSettingsCount = useMemo(() => {
+    return (schema?.settings ?? []).filter((setting) => setting.support !== "native").length;
+  }, [schema]);
+
+  const blockUnsupportedSettingsCount = useMemo(() => {
+    return (schema?.blocks ?? []).reduce((total, block) => {
+      return total + block.settings.filter((setting) => setting.support !== "native").length;
+    }, 0);
+  }, [schema]);
+
+  const blockCountByType = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const block of editorState?.blocks ?? []) {
+      counts.set(block.type, (counts.get(block.type) ?? 0) + 1);
+    }
+    return counts;
+  }, [editorState?.blocks]);
+
+  const sectionSettingLookup = useMemo(() => buildSettingLookup(schema?.settings ?? []), [schema]);
+  const blockSettingLookupByType = useMemo(() => {
+    const map = new Map<string, Map<string, LiquidSchemaSetting>>();
+    for (const definition of schema?.blocks ?? []) {
+      map.set(definition.type, buildSettingLookup(definition.settings));
+    }
+    return map;
+  }, [schema]);
+
+  const canAddSelectedBlock = useMemo(() => {
+    if (!schema || !pendingBlockType) {
+      return false;
+    }
+
+    const definition = blockDefinitionByType.get(pendingBlockType);
+    if (!definition) {
+      return false;
+    }
+
+    if (definition.limit === null || definition.limit <= 0) {
+      return true;
+    }
+
+    return (blockCountByType.get(definition.type) ?? 0) < definition.limit;
+  }, [blockCountByType, blockDefinitionByType, pendingBlockType, schema]);
 
   function clearRecordingAutoStopTimer() {
     if (recordingAutoStopTimerRef.current === null) {
@@ -160,19 +260,51 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
     displayStreamRef.current = null;
   }
 
+  function clearPreviewDebounceTimer() {
+    if (previewDebounceTimerRef.current === null) {
+      return;
+    }
+
+    window.clearTimeout(previewDebounceTimerRef.current);
+    previewDebounceTimerRef.current = null;
+  }
+
+  function revokeMediaOverrideUrls(overrides: Record<string, string>) {
+    for (const value of Object.values(overrides)) {
+      if (value.startsWith("blob:")) {
+        URL.revokeObjectURL(value);
+      }
+    }
+  }
+
   function resetPreviewAndRecordingState() {
     localFileLoadTokenRef.current += 1;
     setLocalLiquidSource("");
     setLocalLiquidFileName(null);
+    setSchema(null);
+    setDiagnostics([]);
+    setEditorState(null);
+    setPendingBlockType("");
+    setMediaOverrides({});
     setPreviewHtml("");
     setPreviewError(null);
     setIsRenderingPreview(false);
+    setSplitPercent(44);
+    setIsResizing(false);
     setIsRecordingPreview(false);
     setRecordingMessage(null);
     setRecordingError(null);
 
+    clearPreviewDebounceTimer();
     previewRenderControllerRef.current?.abort();
     previewRenderControllerRef.current = null;
+    blockIdCounterRef.current = 0;
+    activePointerIdRef.current = null;
+    resizeBoundsRef.current = null;
+    resizePendingPercentRef.current = null;
+    liveSplitPercentRef.current = 44;
+    revokeMediaOverrideUrls(mediaOverridesRef.current);
+    mediaOverridesRef.current = {};
 
     const recorder = mediaRecorderRef.current;
     mediaRecorderRef.current = null;
@@ -197,6 +329,7 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
       inFlightControllerRef.current?.abort();
       inFlightControllerRef.current = null;
 
+      clearPreviewDebounceTimer();
       previewRenderControllerRef.current?.abort();
       previewRenderControllerRef.current = null;
 
@@ -212,76 +345,359 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
       recordingStartInFlightRef.current = false;
       clearRecordingAutoStopTimer();
       stopDisplayStreamTracks();
+
+      revokeMediaOverrideUrls(mediaOverridesRef.current);
+      mediaOverridesRef.current = {};
     };
   }, []);
 
-  async function renderLocalPreview(nextSource: string) {
-    const trimmedSource = nextSource.trim();
-    if (!trimmedSource) {
-      setPreviewHtml("");
-      setPreviewError("Liquid source is empty.");
+  const updateMediaOverride = useCallback((pathKey: string, nextValue: string | null) => {
+    setMediaOverrides((current) => {
+      const previousValue = current[pathKey];
+      if (previousValue === nextValue) {
+        return current;
+      }
+
+      if (previousValue?.startsWith("blob:")) {
+        URL.revokeObjectURL(previousValue);
+      }
+
+      if (!nextValue) {
+        const next = { ...current };
+        delete next[pathKey];
+        return next;
+      }
+
+      return {
+        ...current,
+        [pathKey]: nextValue,
+      };
+    });
+  }, []);
+
+  const handleSelectLocalMedia = useCallback(
+    (pathKey: string, file: File | null) => {
+      if (!file) {
+        updateMediaOverride(pathKey, null);
+        return;
+      }
+
+      const objectUrl = URL.createObjectURL(file);
+      updateMediaOverride(pathKey, objectUrl);
+    },
+    [updateMediaOverride],
+  );
+
+  const handleSettingValueChange = useCallback(
+    (pathKey: string, nextValue: LiquidSettingJsonValue) => {
+      const parsedPath = parseSettingPath(pathKey);
+      if (!parsedPath) {
+        return;
+      }
+
+      setEditorState((current) => {
+        if (!current) {
+          return current;
+        }
+
+        if (parsedPath.kind === "section") {
+          return {
+            ...current,
+            sectionSettings: {
+              ...current.sectionSettings,
+              [parsedPath.settingId]: nextValue,
+            },
+          };
+        }
+
+        return {
+          ...current,
+          blocks: current.blocks.map((block) => {
+            if (block.id !== parsedPath.blockId) {
+              return block;
+            }
+
+            return {
+              ...block,
+              settings: {
+                ...block.settings,
+                [parsedPath.settingId]: nextValue,
+              },
+            };
+          }),
+        };
+      });
+
+      updateMediaOverride(pathKey, null);
+    },
+    [updateMediaOverride],
+  );
+
+  const handleAddBlock = useCallback(() => {
+    if (!schema || !editorState || !pendingBlockType) {
       return;
     }
 
-    const parsedResult = parseLiquidSchema(nextSource);
-    if (!parsedResult.schema) {
-      const primaryDiagnostic = parsedResult.diagnostics.find((diagnostic) => diagnostic.level === "error")
-        ?? parsedResult.diagnostics[0];
-      setPreviewHtml("");
-      setPreviewError(primaryDiagnostic?.message ?? "Liquid schema parsing failed.");
+    const definition = blockDefinitionByType.get(pendingBlockType);
+    if (!definition) {
       return;
     }
 
-    const controller = new AbortController();
-    previewRenderControllerRef.current?.abort();
-    previewRenderControllerRef.current = controller;
-
-    setIsRenderingPreview(true);
-    setPreviewError(null);
-
-    try {
-      const initialState = buildInitialEditorState(parsedResult.schema);
-      const result = await renderLiquidPreview(nextSource, initialState, controller.signal);
-
-      if (!isMountedRef.current || previewRenderControllerRef.current !== controller) {
-        return;
-      }
-
-      setPreviewHtml(result.html);
-      setPreviewError(null);
-    } catch (error) {
-      if (!isMountedRef.current || previewRenderControllerRef.current !== controller) {
-        return;
-      }
-
-      if (error instanceof DOMException && error.name === "AbortError") {
-        return;
-      }
-
-      if (error instanceof Error && error.name === "AbortError") {
-        return;
-      }
-
-      setPreviewHtml("");
-      setPreviewError(error instanceof Error ? error.message : "Failed to render local preview.");
-    } finally {
-      if (previewRenderControllerRef.current === controller) {
-        previewRenderControllerRef.current = null;
-      }
-
-      if (isMountedRef.current) {
-        setIsRenderingPreview(false);
-      }
+    const existingCount = blockCountByType.get(definition.type) ?? 0;
+    if (definition.limit !== null && definition.limit > 0 && existingCount >= definition.limit) {
+      return;
     }
-  }
+
+    setEditorState((current) => {
+      if (!current) {
+        return current;
+      }
+
+      blockIdCounterRef.current += 1;
+      const nextBlock = createBlockInstanceFromDefinition(
+        schema,
+        definition.type,
+        blockIdCounterRef.current,
+      );
+
+      return {
+        ...current,
+        blocks: [...current.blocks, nextBlock],
+      };
+    });
+  }, [blockCountByType, blockDefinitionByType, editorState, pendingBlockType, schema]);
+
+  const handleRemoveBlock = useCallback((blockId: string) => {
+    setEditorState((current) => {
+      if (!current) {
+        return current;
+      }
+
+      return {
+        ...current,
+        blocks: current.blocks.filter((block) => block.id !== blockId),
+      };
+    });
+
+    setMediaOverrides((current) => {
+      const nextEntries = Object.entries(current).filter(([key]) => !key.startsWith(`block:${blockId}:`));
+      if (nextEntries.length === Object.keys(current).length) {
+        return current;
+      }
+
+      for (const [key, value] of Object.entries(current)) {
+        if (key.startsWith(`block:${blockId}:`) && value.startsWith("blob:")) {
+          URL.revokeObjectURL(value);
+        }
+      }
+
+      return Object.fromEntries(nextEntries);
+    });
+  }, []);
+
+  const handleMoveBlock = useCallback((blockId: string, direction: "up" | "down") => {
+    setEditorState((current) => {
+      if (!current) {
+        return current;
+      }
+
+      const index = current.blocks.findIndex((block) => block.id === blockId);
+      if (index < 0) {
+        return current;
+      }
+
+      const targetIndex = direction === "up" ? index - 1 : index + 1;
+      if (targetIndex < 0 || targetIndex >= current.blocks.length) {
+        return current;
+      }
+
+      const nextBlocks = [...current.blocks];
+      const [moved] = nextBlocks.splice(index, 1);
+      nextBlocks.splice(targetIndex, 0, moved);
+
+      return {
+        ...current,
+        blocks: nextBlocks,
+      };
+    });
+  }, []);
+
+  const syncResizeBounds = useCallback((): boolean => {
+    if (!workspaceRef.current) {
+      resizeBoundsRef.current = null;
+      return false;
+    }
+
+    const bounds = workspaceRef.current.getBoundingClientRect();
+    if (bounds.width <= 0) {
+      resizeBoundsRef.current = null;
+      return false;
+    }
+
+    resizeBoundsRef.current = {
+      left: bounds.left,
+      width: bounds.width,
+    };
+    return true;
+  }, []);
+
+  const applyPendingResize = useCallback(() => {
+    resizeRafRef.current = null;
+    const pending = resizePendingPercentRef.current;
+    resizePendingPercentRef.current = null;
+    if (pending === null || !workspaceRef.current) {
+      return;
+    }
+
+    const clamped = clampSplitPercent(pending);
+    liveSplitPercentRef.current = clamped;
+    workspaceRef.current.style.setProperty("--sandbox-left-pane", `${clamped}%`);
+  }, []);
+
+  const queueResize = useCallback(
+    (nextPercent: number) => {
+      resizePendingPercentRef.current = clampSplitPercent(nextPercent);
+      if (resizeRafRef.current !== null) {
+        return;
+      }
+
+      resizeRafRef.current = window.requestAnimationFrame(applyPendingResize);
+    },
+    [applyPendingResize],
+  );
+
+  const handleGlobalPointerMove = useCallback(
+    (event: PointerEvent) => {
+      if (activePointerIdRef.current === null || activePointerIdRef.current !== event.pointerId) {
+        return;
+      }
+
+      const bounds = resizeBoundsRef.current;
+      if (!bounds && !syncResizeBounds()) {
+        return;
+      }
+
+      const effectiveBounds = resizeBoundsRef.current;
+      if (!effectiveBounds) {
+        return;
+      }
+      const nextPercent = ((event.clientX - effectiveBounds.left) / effectiveBounds.width) * 100;
+      queueResize(nextPercent);
+    },
+    [queueResize, syncResizeBounds],
+  );
+
+  const handleWindowResize = useCallback(() => {
+    if (activePointerIdRef.current === null) {
+      return;
+    }
+
+    syncResizeBounds();
+  }, [syncResizeBounds]);
+
+  const endResize = useCallback(() => {
+    activePointerIdRef.current = null;
+    setIsResizing(false);
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+    window.removeEventListener("pointermove", handleGlobalPointerMove);
+    window.removeEventListener("resize", handleWindowResize);
+    resizeBoundsRef.current = null;
+
+    if (resizeRafRef.current !== null) {
+      window.cancelAnimationFrame(resizeRafRef.current);
+      resizeRafRef.current = null;
+    }
+
+    setSplitPercent(clampSplitPercent(liveSplitPercentRef.current));
+  }, [handleGlobalPointerMove, handleWindowResize]);
+
+  const handleGlobalPointerUp = useCallback(
+    (event: PointerEvent) => {
+      if (activePointerIdRef.current === null || activePointerIdRef.current !== event.pointerId) {
+        return;
+      }
+
+      window.removeEventListener("pointerup", handleGlobalPointerUp);
+      window.removeEventListener("pointercancel", handleGlobalPointerUp);
+      endResize();
+    },
+    [endResize],
+  );
+
+  const handleSplitterPointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (activePointerIdRef.current !== null) {
+        return;
+      }
+
+      if (event.button !== 0) {
+        return;
+      }
+
+      event.preventDefault();
+      activePointerIdRef.current = event.pointerId;
+      setIsResizing(true);
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+      syncResizeBounds();
+      window.addEventListener("pointermove", handleGlobalPointerMove);
+      window.addEventListener("pointerup", handleGlobalPointerUp);
+      window.addEventListener("pointercancel", handleGlobalPointerUp);
+      window.addEventListener("resize", handleWindowResize);
+    },
+    [handleGlobalPointerMove, handleGlobalPointerUp, handleWindowResize, syncResizeBounds],
+  );
+
+  const handleSplitterKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight" && event.key !== "Home" && event.key !== "End") {
+      return;
+    }
+
+    event.preventDefault();
+
+    if (event.key === "Home") {
+      setSplitPercent(MIN_SPLIT_PERCENT);
+      return;
+    }
+
+    if (event.key === "End") {
+      setSplitPercent(MAX_SPLIT_PERCENT);
+      return;
+    }
+
+    const direction = event.key === "ArrowLeft" ? -1 : 1;
+    setSplitPercent((current) => clampSplitPercent(current + direction * KEYBOARD_SPLIT_STEP_PERCENT));
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      activePointerIdRef.current = null;
+      resizeBoundsRef.current = null;
+      window.removeEventListener("pointermove", handleGlobalPointerMove);
+      window.removeEventListener("pointerup", handleGlobalPointerUp);
+      window.removeEventListener("pointercancel", handleGlobalPointerUp);
+      window.removeEventListener("resize", handleWindowResize);
+      if (resizeRafRef.current !== null) {
+        window.cancelAnimationFrame(resizeRafRef.current);
+      }
+    };
+  }, [handleGlobalPointerMove, handleGlobalPointerUp, handleWindowResize]);
 
   async function loadLiquidFileForPreview(file: File | null) {
     const token = localFileLoadTokenRef.current + 1;
     localFileLoadTokenRef.current = token;
 
     if (!file) {
+      revokeMediaOverrideUrls(mediaOverridesRef.current);
+      mediaOverridesRef.current = {};
+      setMediaOverrides({});
       setLocalLiquidSource("");
       setLocalLiquidFileName(null);
+      setSchema(null);
+      setDiagnostics([]);
+      setEditorState(null);
+      setPendingBlockType("");
       setPreviewHtml("");
       setPreviewError(null);
       return;
@@ -293,13 +709,25 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
         return;
       }
 
+      const parsedResult = parseLiquidSchema(source);
+      const initialState = parsedResult.schema ? buildInitialEditorState(parsedResult.schema) : null;
+      const primaryDiagnostic = parsedResult.diagnostics.find((diagnostic) => diagnostic.level === "error")
+        ?? parsedResult.diagnostics[0];
+
+      revokeMediaOverrideUrls(mediaOverridesRef.current);
+      mediaOverridesRef.current = {};
+      setMediaOverrides({});
       setLocalLiquidSource(source);
       setLocalLiquidFileName(file.name);
+      setSchema(parsedResult.schema);
+      setDiagnostics(parsedResult.diagnostics);
+      setEditorState(initialState);
+      setPendingBlockType(parsedResult.schema?.blocks[0]?.type ?? "");
+      blockIdCounterRef.current = initialState?.blocks.length ?? 0;
       setPreviewHtml("");
-      setPreviewError(null);
+      setPreviewError(parsedResult.schema ? null : (primaryDiagnostic?.message ?? "Liquid schema parsing failed."));
       setRecordingMessage(null);
       setRecordingError(null);
-      await renderLocalPreview(source);
     } catch {
       if (!isMountedRef.current || localFileLoadTokenRef.current !== token) {
         return;
@@ -307,6 +735,10 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
 
       setLocalLiquidSource("");
       setLocalLiquidFileName(file.name);
+      setSchema(null);
+      setDiagnostics([]);
+      setEditorState(null);
+      setPendingBlockType("");
       setPreviewHtml("");
       setPreviewError("Failed to read selected Liquid file.");
     }
@@ -317,6 +749,78 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
     void loadLiquidFileForPreview(file);
   }
 
+  useEffect(() => {
+    mediaOverridesRef.current = mediaOverrides;
+  }, [mediaOverrides]);
+
+  useEffect(() => {
+    if (!localLiquidSource || !effectiveEditorState) {
+      setIsRenderingPreview(false);
+      setPreviewHtml("");
+      return;
+    }
+
+    clearPreviewDebounceTimer();
+    const controller = new AbortController();
+    previewRenderControllerRef.current?.abort();
+    previewRenderControllerRef.current = controller;
+
+    setIsRenderingPreview(true);
+
+    previewDebounceTimerRef.current = window.setTimeout(() => {
+      previewDebounceTimerRef.current = null;
+      void (async () => {
+        try {
+          const result = await renderLiquidPreview(localLiquidSource, effectiveEditorState, controller.signal);
+
+          if (!isMountedRef.current || previewRenderControllerRef.current !== controller) {
+            return;
+          }
+
+          setPreviewHtml(result.html);
+          setPreviewError(null);
+        } catch (error) {
+          if (!isMountedRef.current || previewRenderControllerRef.current !== controller) {
+            return;
+          }
+
+          if (error instanceof DOMException && error.name === "AbortError") {
+            return;
+          }
+
+          if (error instanceof Error && error.name === "AbortError") {
+            return;
+          }
+
+          setPreviewHtml("");
+          setPreviewError(error instanceof Error ? error.message : "Failed to render local preview.");
+        } finally {
+          if (previewRenderControllerRef.current === controller) {
+            previewRenderControllerRef.current = null;
+          }
+
+          if (isMountedRef.current) {
+            setIsRenderingPreview(false);
+          }
+        }
+      })();
+    }, PREVIEW_ENQUEUE_DEBOUNCE_MS);
+
+    return () => {
+      clearPreviewDebounceTimer();
+      controller.abort();
+    };
+  }, [effectiveEditorState, localLiquidSource]);
+
+  useEffect(() => {
+    if (!workspaceRef.current) {
+      return;
+    }
+
+    workspaceRef.current.style.setProperty("--sandbox-left-pane", `${splitPercent}%`);
+    liveSplitPercentRef.current = splitPercent;
+  }, [splitPercent]);
+
   async function handleStartRecordingPreview() {
     if (isRecordingPreview || recordingStartInFlightRef.current) {
       return;
@@ -325,7 +829,7 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
     recordingStartInFlightRef.current = true;
 
     if (!previewHtml.trim()) {
-      setRecordingError("Render a local preview before starting a recording.");
+      setRecordingError("Load a valid Liquid file and wait for preview before starting a recording.");
       recordingStartInFlightRef.current = false;
       return;
     }
@@ -572,7 +1076,11 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
 
     const selectedLiquidFile = liquidInputRef.current?.files?.[0] ?? null;
     if (selectedLiquidFile && localLiquidSource.trim().length > 0) {
-      const editedLiquidFile = new File([localLiquidSource], selectedLiquidFile.name, {
+      const sourceForUpload = schema && editorState
+        ? patchLiquidSchemaDefaults(localLiquidSource, schema, editorState)
+        : localLiquidSource;
+
+      const editedLiquidFile = new File([sourceForUpload], selectedLiquidFile.name, {
         type: selectedLiquidFile.type || "text/plain",
         lastModified: Date.now(),
       });
@@ -702,49 +1210,27 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
       <section className="rounded-lg border border-zinc-200 bg-zinc-50 p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold tracking-tight text-zinc-900">
-            Local Liquid Preview + Recording
+            Split-View Liquid Editor + Recording
           </h2>
           <span className="rounded-full border border-zinc-300 px-2 py-0.5 text-xs font-medium text-zinc-600">
             Optional
           </span>
         </div>
         <p className="mt-2 text-xs text-zinc-600">
-          Reuses the sandbox Liquid renderer for local preview. Edit source, re-render, then record a short clip to
-          auto-fill the thumbnail input.
+          Reuses the same schema settings + block controls as sandbox. Configure the component visually, then record a
+          short clip to auto-fill the thumbnail input.
         </p>
 
-        <div className="mt-3">
-          <label htmlFor="localLiquidSource" className="block text-xs font-medium uppercase tracking-wide text-zinc-700">
-            Local Source Editor
-          </label>
-          <textarea
-            id="localLiquidSource"
-            value={localLiquidSource}
-            onChange={(event) => setLocalLiquidSource(event.currentTarget.value)}
-            placeholder={
-              localLiquidFileName
-                ? "Adjust Liquid source before rendering preview."
-                : "Choose a .liquid file above to load editable source."
-            }
-            className="mt-1 block h-40 w-full rounded-lg border border-zinc-300 px-3 py-2 text-xs text-zinc-900 focus-visible:border-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 focus-visible:ring-offset-2"
-            spellCheck={false}
-          />
-          {localLiquidFileName ? (
-            <p className="mt-1 text-xs text-zinc-500">
-              Loaded file: <span className="font-medium">{localLiquidFileName}</span>
-            </p>
-          ) : null}
-        </div>
+        {localLiquidFileName ? (
+          <p className="mt-3 text-xs text-zinc-500">
+            Loaded file: <span className="font-medium">{localLiquidFileName}</span>
+          </p>
+        ) : null}
 
         <div className="mt-3 flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => void renderLocalPreview(localLiquidSource)}
-            disabled={isRenderingPreview || localLiquidSource.trim().length === 0 || isRecordingPreview}
-            className="touch-manipulation rounded-lg border border-zinc-300 px-3 py-2 text-xs font-medium text-zinc-800 transition-transform duration-150 motion-reduce:transition-none motion-safe:hover:will-change-transform motion-safe:hover:transform-gpu motion-safe:hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {isRenderingPreview ? "Rendering…" : "Render Preview"}
-          </button>
+          <span className="inline-flex items-center rounded-full border border-zinc-300 bg-white px-2.5 py-1 text-xs text-zinc-600">
+            {isRenderingPreview ? "Preview rendering…" : "Preview ready"}
+          </span>
 
           {isRecordingPreview ? (
             <button
@@ -758,7 +1244,7 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
             <button
               type="button"
               onClick={() => void handleStartRecordingPreview()}
-              disabled={isRenderingPreview || previewHtml.trim().length === 0}
+              disabled={isRenderingPreview || previewHtml.trim().length === 0 || !schema || !editorState}
               className="touch-manipulation rounded-lg border border-zinc-900 bg-zinc-900 px-3 py-2 text-xs font-medium text-white transition-transform duration-150 motion-reduce:transition-none motion-safe:hover:will-change-transform motion-safe:hover:transform-gpu motion-safe:hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
             >
               Start Recording
@@ -766,7 +1252,7 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
           )}
         </div>
 
-        {previewError ? (
+        {previewError && (!schema || !editorState) ? (
           <div
             role="status"
             aria-live="polite"
@@ -796,22 +1282,47 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
           </div>
         ) : null}
 
-        <div className="mt-3 overflow-hidden rounded-lg border border-zinc-200 bg-white">
-          <div className="aspect-[4/3] w-full">
-            {previewHtml.trim().length > 0 ? (
-              <iframe
-                title="Local Liquid preview"
-                srcDoc={previewDocument}
-                sandbox=""
-                className="h-full w-full border-0"
-              />
-            ) : (
-              <div className="flex h-full items-center justify-center px-4 text-center text-xs text-zinc-500">
-                {PREVIEW_PLACEHOLDER_TEXT}
-              </div>
-            )}
+        {!localLiquidSource ? (
+          <div className="mt-3 flex h-44 items-center justify-center rounded-lg border border-zinc-200 bg-white px-4 text-center text-xs text-zinc-500">
+            {PREVIEW_PLACEHOLDER_TEXT}
           </div>
-        </div>
+        ) : !schema || !editorState ? (
+          <div
+            role="status"
+            aria-live="polite"
+            className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800"
+          >
+            {previewError ?? "Liquid schema parsing failed."}
+          </div>
+        ) : (
+          <div className="mt-3 h-[34rem] min-h-[26rem]">
+            <SandboxWorkspace
+              workspaceRef={workspaceRef}
+              workspaceStyle={workspaceStyle}
+              splitPercent={splitPercent}
+              isResizing={isResizing}
+              schema={schema}
+              editorState={editorState}
+              diagnostics={diagnostics}
+              sectionUnsupportedSettingsCount={sectionUnsupportedSettingsCount}
+              blockUnsupportedSettingsCount={blockUnsupportedSettingsCount}
+              pendingBlockType={pendingBlockType}
+              canAddSelectedBlock={canAddSelectedBlock}
+              sectionSettingLookup={sectionSettingLookup}
+              blockSettingLookupByType={blockSettingLookupByType}
+              previewError={previewError}
+              iframeDocument={previewDocument}
+              onPendingBlockTypeChange={setPendingBlockType}
+              onAddBlock={handleAddBlock}
+              onMoveBlock={handleMoveBlock}
+              onRemoveBlock={handleRemoveBlock}
+              onSettingValueChange={handleSettingValueChange}
+              onSelectLocalMedia={handleSelectLocalMedia}
+              onSplitterPointerDown={handleSplitterPointerDown}
+              onSplitterKeyDown={handleSplitterKeyDown}
+            />
+          </div>
+        )}
       </section>
 
       {errorMessage ? (

@@ -291,7 +291,13 @@ export function SandboxWorkspace({
           {previewError ? <p className="mt-1 text-xs" style={{ color: "#8f2f29" }}>{previewError}</p> : null}
         </header>
         <div className="min-h-0 w-full flex-1">
-          <iframe title="Component preview" srcDoc={iframeDocument} sandbox="" className="h-full w-full border-0" />
+          <iframe
+            title="Component preview"
+            srcDoc={iframeDocument}
+            sandbox="allow-scripts"
+            referrerPolicy="no-referrer"
+            className="h-full w-full border-0"
+          />
         </div>
       </section>
     </div>

@@ -16,6 +16,10 @@ export function buildPreviewDocument(html: string): string {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https: http:; img-src data: blob: https: http:; media-src data: blob: https: http:; font-src data: https: http:; connect-src 'none'; frame-src 'none'; child-src 'none'; worker-src 'none'; manifest-src 'none'; navigate-to 'none'; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'none';"
+    />
     <style>
       :root { color-scheme: light; }
       body {
@@ -84,35 +88,38 @@ export function applyMediaOverrides(
   editorState: LiquidEditorState,
   mediaOverrides: Record<string, string>,
 ): LiquidEditorState {
-  if (Object.keys(mediaOverrides).length === 0) {
+  const mediaOverrideEntries = Object.entries(mediaOverrides);
+  if (mediaOverrideEntries.length === 0) {
     return editorState;
   }
 
-  const sectionSettings = {
-    ...editorState.sectionSettings,
-  };
+  let sectionSettings = editorState.sectionSettings;
+  let blocks = editorState.blocks;
+  let blockIndexById: Map<string, number> | null = null;
 
-  const blocks = editorState.blocks.map((block) => ({
-    ...block,
-    settings: {
-      ...block.settings,
-    },
-  }));
-
-  const blockIndexById = new Map<string, number>();
-  for (const [index, block] of blocks.entries()) {
-    blockIndexById.set(block.id, index);
-  }
-
-  for (const [pathKey, overrideUrl] of Object.entries(mediaOverrides)) {
+  for (const [pathKey, overrideUrl] of mediaOverrideEntries) {
     const parsed = parseSettingPath(pathKey);
     if (!parsed) {
       continue;
     }
 
     if (parsed.kind === "section") {
+      if (sectionSettings[parsed.settingId] === overrideUrl) {
+        continue;
+      }
+
+      if (sectionSettings === editorState.sectionSettings) {
+        sectionSettings = { ...editorState.sectionSettings };
+      }
       sectionSettings[parsed.settingId] = overrideUrl;
       continue;
+    }
+
+    if (!blockIndexById) {
+      blockIndexById = new Map<string, number>();
+      for (const [index, block] of editorState.blocks.entries()) {
+        blockIndexById.set(block.id, index);
+      }
     }
 
     const blockIndex = blockIndexById.get(parsed.blockId);
@@ -120,7 +127,27 @@ export function applyMediaOverrides(
       continue;
     }
 
-    blocks[blockIndex].settings[parsed.settingId] = overrideUrl;
+    const block = blocks[blockIndex];
+    if (block.settings[parsed.settingId] === overrideUrl) {
+      continue;
+    }
+
+    if (blocks === editorState.blocks) {
+      blocks = [...editorState.blocks];
+    }
+
+    const currentBlock = blocks[blockIndex];
+    blocks[blockIndex] = {
+      ...currentBlock,
+      settings: {
+        ...currentBlock.settings,
+        [parsed.settingId]: overrideUrl,
+      },
+    };
+  }
+
+  if (sectionSettings === editorState.sectionSettings && blocks === editorState.blocks) {
+    return editorState;
   }
 
   return {

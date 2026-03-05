@@ -33,6 +33,27 @@ const SOURCE = `{% assign heading = section.settings.heading %}
 }
 {% endschema %}`;
 
+const SOURCE_WITH_EMPTY_PRESET_BLOCKS = `{% schema %}
+{
+  "name": "Fallback Block Preset Test",
+  "settings": [
+    { "type": "text", "id": "heading", "label": "Heading", "default": "Fallback heading" }
+  ],
+  "blocks": [
+    {
+      "type": "quote",
+      "name": "Quote",
+      "settings": [
+        { "type": "text", "id": "author", "label": "Author", "default": "Jane Doe" }
+      ]
+    }
+  ],
+  "presets": [
+    { "name": "Default" }
+  ]
+}
+{% endschema %}`;
+
 test("patchLiquidSchemaDefaults updates defaults while preserving non-schema markup", () => {
   const parsed = parseLiquidSchema(SOURCE);
   assert.ok(parsed.schema);
@@ -69,4 +90,14 @@ test("patched source remains parseable and carries preset block order", () => {
   assert.ok(reparsed.schema);
   assert.equal(reparsed.schema?.presets[0]?.blocks.length, 2);
   assert.equal(reparsed.schema?.presets[0]?.blocks[1]?.type, "slide");
+});
+
+test("buildInitialEditorState seeds one block per definition when preset blocks are missing", () => {
+  const parsed = parseLiquidSchema(SOURCE_WITH_EMPTY_PRESET_BLOCKS);
+  assert.ok(parsed.schema);
+
+  const state = buildInitialEditorState(parsed.schema);
+  assert.equal(state.blocks.length, 1);
+  assert.equal(state.blocks[0]?.type, "quote");
+  assert.equal(state.blocks[0]?.settings.author, "Jane Doe");
 });

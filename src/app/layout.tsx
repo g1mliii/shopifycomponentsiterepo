@@ -108,11 +108,6 @@ export const metadata: Metadata = {
   },
   verification: siteVerification,
   manifest: "/manifest.webmanifest",
-  icons: {
-    icon: "/favicon.ico",
-    shortcut: "/favicon.ico",
-    apple: "/favicon.ico",
-  },
 };
 
 export default function RootLayout({

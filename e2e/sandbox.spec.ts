@@ -28,6 +28,7 @@ test("sandbox renders live preview and downloads patched liquid", async ({ page 
   await page.goto(`/components/${encodeURIComponent(fixture.componentId)}/sandbox`);
   await expect(page.getByRole("heading", { name: "Liquid Sandbox" })).toBeVisible();
   await expect(page.locator('iframe[title="Component preview"]')).toBeVisible();
+  await expect(page.locator('iframe[title="Component preview"]')).toHaveAttribute("sandbox", "allow-scripts");
   const layoutMetrics = await page.evaluate(() => {
     const main = document.querySelector("main");
     const previewFrame = document.querySelector('iframe[title="Component preview"]');

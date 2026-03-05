@@ -33,6 +33,7 @@ import {
   createBlockInstanceFromDefinition,
   patchLiquidSchemaDefaults,
 } from "@/lib/liquid/schema-patch";
+import { applyLiquidPreviewFallbacks } from "@/lib/liquid/preview-fallbacks";
 import { buildSettingLookup } from "@/lib/liquid/visibility-hints";
 import { LatestPreviewScheduler } from "@/lib/liquid/preview-scheduler";
 import { renderLiquidPreview, type LiquidRenderResult } from "@/lib/liquid/render";
@@ -191,8 +192,13 @@ export function SandboxClient({ component }: SandboxClientProps) {
       return null;
     }
 
-    return applyMediaOverrides(editorState, mediaOverrides);
-  }, [editorState, mediaOverrides]);
+    const withMediaOverrides = applyMediaOverrides(editorState, mediaOverrides);
+    if (!schema) {
+      return withMediaOverrides;
+    }
+
+    return applyLiquidPreviewFallbacks(schema, withMediaOverrides);
+  }, [editorState, mediaOverrides, schema]);
 
   const iframeDocument = useMemo(() => buildPreviewDocument(previewHtml), [previewHtml]);
 

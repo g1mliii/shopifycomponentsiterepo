@@ -110,6 +110,14 @@ export function buildInitialEditorState(schema: LiquidSchema): LiquidEditorState
         },
       });
     }
+  } else {
+    for (const definition of schema.blocks) {
+      if (definition.limit !== null && definition.limit <= 0) {
+        continue;
+      }
+
+      blocks.push(createBlockInstanceFromDefinition(schema, definition.type, blocks.length));
+    }
   }
 
   return {

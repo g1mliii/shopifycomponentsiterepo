@@ -16,9 +16,10 @@ import {
   getAbsoluteUrl,
   serializeJsonLd,
 } from "@/lib/seo/site";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createPublicServerSupabaseClient } from "@/lib/supabase/public-server";
 
 const EAGER_THUMBNAIL_COUNT = 3;
+export const revalidate = 120;
 
 export const metadata: Metadata = {
   title: "Shopify Components Library",
@@ -52,7 +53,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
   let loadErrorMessage: string | null = null;
 
   try {
-    const supabase = await createServerSupabaseClient();
+    const supabase = createPublicServerSupabaseClient();
     result = await listPublicComponentsCached(supabase, query);
   } catch (error) {
     loadErrorMessage = error instanceof Error ? error.message : "Failed to load public components.";

@@ -45,11 +45,6 @@ const nextConfig: NextConfig = {
         destination: "/admin/login",
         permanent: false,
       },
-      {
-        source: "/adminupload",
-        destination: "/admin/upload",
-        permanent: false,
-      },
     ];
   },
   async rewrites() {
@@ -97,6 +92,25 @@ const nextConfig: NextConfig = {
           {
             key: "X-Robots-Tag",
             value: "noindex, nofollow, noarchive, nosnippet",
+          },
+        ],
+      },
+      {
+        source: "/favicon.ico",
+        headers: [
+          {
+            key: "Cache-Control",
+            value:
+              "public, max-age=86400, s-maxage=604800, stale-while-revalidate=2592000",
+          },
+        ],
+      },
+      {
+        source: "/manifest.webmanifest",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=0, s-maxage=86400, stale-while-revalidate=604800",
           },
         ],
       },
