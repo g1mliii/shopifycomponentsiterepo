@@ -23,6 +23,7 @@ import {
   buildPreviewDocument,
   clampSplitPercent,
   parseSettingPath,
+  readLocalMediaFileAsDataUrl,
 } from "@/app/components/[id]/sandbox/sandbox-helpers";
 
 import { renderLiquidPreview } from "@/lib/liquid/render";
@@ -79,6 +80,12 @@ type UploadFormProps = {
   onUploaded?: (component: UploadedComponent) => void;
 };
 
+type ExtendedDisplayMediaStreamOptions = DisplayMediaStreamOptions & {
+  preferCurrentTab?: boolean;
+  selfBrowserSurface?: "include" | "exclude";
+  surfaceSwitching?: "include" | "exclude";
+};
+
 function getPreferredRecordingMimeType(): string | null {
   if (typeof MediaRecorder === "undefined") {
     return null;
@@ -101,20 +108,19 @@ function getRecordingExtension(mimeType: string): ".mp4" | ".webm" {
   return ".webm";
 }
 
-function assignFileToInput(input: HTMLInputElement | null, file: File): boolean {
-  if (!input) {
-    return false;
-  }
+function downloadRecordingBlob(blob: Blob, filename: string): void {
+  const objectUrl = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = objectUrl;
+  anchor.download = filename;
+  anchor.rel = "noopener";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
 
-  try {
-    const dataTransfer = new DataTransfer();
-    dataTransfer.items.add(file);
-    input.files = dataTransfer.files;
-    input.dispatchEvent(new Event("change", { bubbles: true }));
-    return true;
-  } catch {
-    return false;
-  }
+  window.setTimeout(() => {
+    URL.revokeObjectURL(objectUrl);
+  }, 2_000);
 }
 
 export function UploadForm({ onUploaded }: UploadFormProps) {
@@ -145,7 +151,6 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
   const previewRenderControllerRef = useRef<AbortController | null>(null);
   const previewDebounceTimerRef = useRef<number | null>(null);
   const liquidInputRef = useRef<HTMLInputElement | null>(null);
-  const thumbnailInputRef = useRef<HTMLInputElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const displayStreamRef = useRef<MediaStream | null>(null);
   const recordingChunksRef = useRef<Blob[]>([]);
@@ -154,6 +159,7 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
   const recordingStartInFlightRef = useRef(false);
   const recordingAutoStopTimerRef = useRef<number | null>(null);
   const workspaceRef = useRef<HTMLDivElement | null>(null);
+  const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
   const blockIdCounterRef = useRef(0);
   const activePointerIdRef = useRef<number | null>(null);
   const resizeRafRef = useRef<number | null>(null);
@@ -161,6 +167,7 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
   const resizeBoundsRef = useRef<{ left: number; width: number } | null>(null);
   const liveSplitPercentRef = useRef(splitPercent);
   const mediaOverridesRef = useRef<Record<string, string>>(mediaOverrides);
+  const mediaSelectionVersionByPathRef = useRef<Map<string, number>>(new Map());
 
   const previewDocument = useMemo(() => buildPreviewDocument(previewHtml), [previewHtml]);
   const workspaceStyle = useMemo(
@@ -277,6 +284,15 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
     }
   }
 
+  function postPreviewScaleLock(lock: boolean) {
+    const previewWindow = previewIframeRef.current?.contentWindow;
+    if (!previewWindow) {
+      return;
+    }
+
+    previewWindow.postMessage({ type: lock ? "pressplay:lock-scale" : "pressplay:unlock-scale" }, "*");
+  }
+
   function resetPreviewAndRecordingState() {
     localFileLoadTokenRef.current += 1;
     setLocalLiquidSource("");
@@ -305,6 +321,7 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
     liveSplitPercentRef.current = 44;
     revokeMediaOverrideUrls(mediaOverridesRef.current);
     mediaOverridesRef.current = {};
+    mediaSelectionVersionByPathRef.current.clear();
 
     const recorder = mediaRecorderRef.current;
     mediaRecorderRef.current = null;
@@ -320,9 +337,12 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
     }
 
     stopDisplayStreamTracks();
+    postPreviewScaleLock(false);
   }
 
   useEffect(() => {
+    const mediaSelectionVersionByPath = mediaSelectionVersionByPathRef.current;
+
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
@@ -345,9 +365,11 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
       recordingStartInFlightRef.current = false;
       clearRecordingAutoStopTimer();
       stopDisplayStreamTracks();
+      postPreviewScaleLock(false);
 
       revokeMediaOverrideUrls(mediaOverridesRef.current);
       mediaOverridesRef.current = {};
+      mediaSelectionVersionByPath.clear();
     };
   }, []);
 
@@ -377,13 +399,30 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
 
   const handleSelectLocalMedia = useCallback(
     (pathKey: string, file: File | null) => {
+      const versionMap = mediaSelectionVersionByPathRef.current;
+      const nextVersion = (versionMap.get(pathKey) ?? 0) + 1;
+      versionMap.set(pathKey, nextVersion);
+
       if (!file) {
         updateMediaOverride(pathKey, null);
         return;
       }
 
-      const objectUrl = URL.createObjectURL(file);
-      updateMediaOverride(pathKey, objectUrl);
+      void readLocalMediaFileAsDataUrl(file)
+        .then((dataUrl) => {
+          if (versionMap.get(pathKey) !== nextVersion) {
+            return;
+          }
+
+          updateMediaOverride(pathKey, dataUrl);
+        })
+        .catch(() => {
+          if (versionMap.get(pathKey) !== nextVersion) {
+            return;
+          }
+
+          updateMediaOverride(pathKey, null);
+        });
     },
     [updateMediaOverride],
   );
@@ -427,10 +466,8 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
           }),
         };
       });
-
-      updateMediaOverride(pathKey, null);
     },
-    [updateMediaOverride],
+    [],
   );
 
   const handleAddBlock = useCallback(() => {
@@ -846,12 +883,13 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
     }
 
     setRecordingError(null);
-    setRecordingMessage("Choose this browser tab/window in the screen-share picker.");
+    setRecordingMessage("Choose this browser tab/window. Stop recording to download the clip.");
+    postPreviewScaleLock(true);
 
     const preferredMimeType = getPreferredRecordingMimeType();
 
     try {
-      const displayStream = await navigator.mediaDevices.getDisplayMedia({
+      const displayOptions: ExtendedDisplayMediaStreamOptions = {
         video: {
           frameRate: {
             ideal: MAX_RECORDING_FRAME_RATE,
@@ -859,7 +897,13 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
           },
         },
         audio: false,
-      });
+        // These are hints only; browsers may ignore.
+        preferCurrentTab: true,
+        selfBrowserSurface: "include",
+        surfaceSwitching: "include",
+      };
+
+      const displayStream = await navigator.mediaDevices.getDisplayMedia(displayOptions);
 
       if (!isMountedRef.current) {
         for (const track of displayStream.getTracks()) {
@@ -921,6 +965,7 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
         recordingBytesRef.current = 0;
         recordingStopReasonRef.current = null;
         stopDisplayStreamTracks();
+        postPreviewScaleLock(false);
       };
 
       mediaRecorder.onstop = () => {
@@ -936,6 +981,7 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
 
         mediaRecorderRef.current = null;
         stopDisplayStreamTracks();
+        postPreviewScaleLock(false);
 
         if (!isMountedRef.current) {
           return;
@@ -955,50 +1001,37 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
         const baseName = localLiquidFileName
           ? localLiquidFileName.replace(/\.liquid$/i, "")
           : "liquid-preview";
+        const recordingFileName = `${baseName}-thumbnail${extension}`;
 
-        const recordingFile = new File(
-          [recordingBlob],
-          `${baseName}-thumbnail${extension}`,
-          {
-            type: normalizedMimeType,
-            lastModified: Date.now(),
-          },
-        );
-
-        if (recordingFile.size > THUMBNAIL_MAX_BYTES) {
-          setRecordingMessage(null);
-          setRecordingError(
-            `Recording exceeds the 25MB upload limit (${Math.ceil(recordingFile.size / 1024 / 1024)} MB). Record a shorter clip.`,
-          );
-          return;
-        }
-
-        const assigned = assignFileToInput(thumbnailInputRef.current, recordingFile);
-        if (!assigned) {
-          setRecordingMessage(null);
-          setRecordingError(
-            "Recording finished, but thumbnail input could not be auto-filled. Please pick the saved recording manually.",
-          );
-          return;
-        }
+        downloadRecordingBlob(recordingBlob, recordingFileName);
 
         setRecordingError(null);
-        const sizeLabel = `${Math.ceil(recordingFile.size / 1024)} KB`;
+        const sizeLabel = `${Math.ceil(recordingBlob.size / 1024)} KB`;
+        const sizeMb = Math.ceil(recordingBlob.size / 1024 / 1024);
+
+        if (recordingBlob.size > THUMBNAIL_MAX_BYTES) {
+          setRecordingMessage(null);
+          setRecordingError(
+            `Recording downloaded (${sizeMb} MB) but exceeds the 25MB upload limit. Crop/trim it, then upload manually as thumbnail.`,
+          );
+          return;
+        }
+
         if (stopReason === "max_duration") {
           setRecordingMessage(
-            `Recording auto-stopped at ${Math.round(RECORDING_MAX_DURATION_MS / 1000)}s: ${recordingFile.name} (${sizeLabel}).`,
+            `Recording downloaded (auto-stopped at ${Math.round(RECORDING_MAX_DURATION_MS / 1000)}s): ${recordingFileName} (${sizeLabel}).`,
           );
           return;
         }
 
         if (stopReason === "max_size") {
           setRecordingMessage(
-            `Recording auto-stopped near size limit: ${recordingFile.name} (${sizeLabel}).`,
+            `Recording downloaded (auto-stopped near size limit): ${recordingFileName} (${sizeLabel}).`,
           );
           return;
         }
 
-        setRecordingMessage(`Recording ready: ${recordingFile.name} (${sizeLabel}).`);
+        setRecordingMessage(`Recording downloaded: ${recordingFileName} (${sizeLabel}). Upload it manually as thumbnail.`);
       };
 
       mediaRecorder.start(250);
@@ -1012,7 +1045,7 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
         activeRecorder.stop();
       }, RECORDING_MAX_DURATION_MS);
       setIsRecordingPreview(true);
-      setRecordingMessage("Recording in progress. Click Stop Recording when done.");
+      setRecordingMessage("Recording in progress. Click Stop Recording to download.");
       recordingStartInFlightRef.current = false;
     } catch (error) {
       recordingStartInFlightRef.current = false;
@@ -1022,6 +1055,7 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
       recordingBytesRef.current = 0;
       recordingStopReasonRef.current = null;
       stopDisplayStreamTracks();
+      postPreviewScaleLock(false);
 
       if (!isMountedRef.current) {
         return;
@@ -1050,6 +1084,7 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
     }
 
     setIsRecordingPreview(false);
+    postPreviewScaleLock(false);
   }
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -1181,7 +1216,6 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
           Thumbnail (image or video)
         </label>
         <input
-          ref={thumbnailInputRef}
           id="thumbnail"
           name="thumbnail"
           type="file"
@@ -1218,7 +1252,7 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
         </div>
         <p className="mt-2 text-xs text-zinc-600">
           Reuses the same schema settings + block controls as sandbox. Configure the component visually, then record a
-          short clip to auto-fill the thumbnail input.
+          short clip and download it. Crop/edit as needed, then upload it manually as thumbnail.
         </p>
 
         {localLiquidFileName ? (
@@ -1295,9 +1329,10 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
             {previewError ?? "Liquid schema parsing failed."}
           </div>
         ) : (
-          <div className="mt-3 h-[34rem] min-h-[26rem]">
+          <div className="mt-3 h-[62rem] min-h-[36rem]">
             <SandboxWorkspace
               workspaceRef={workspaceRef}
+              previewIframeRef={previewIframeRef}
               workspaceStyle={workspaceStyle}
               splitPercent={splitPercent}
               isResizing={isResizing}
@@ -1318,6 +1353,7 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
               onRemoveBlock={handleRemoveBlock}
               onSettingValueChange={handleSettingValueChange}
               onSelectLocalMedia={handleSelectLocalMedia}
+              previewViewportAspectRatio="4 / 3"
               onSplitterPointerDown={handleSplitterPointerDown}
               onSplitterKeyDown={handleSplitterKeyDown}
             />

@@ -23,6 +23,7 @@ import {
   clampSplitPercent,
   createAbortError,
   parseSettingPath,
+  readLocalMediaFileAsDataUrl,
   toTitleSlug,
 } from "./sandbox-helpers";
 
@@ -139,7 +140,7 @@ export function SandboxClient({ component }: SandboxClientProps) {
   const [isRendering, setIsRendering] = useState(false);
   const [splitPercent, setSplitPercent] = useState(44);
   const [isResizing, setIsResizing] = useState(false);
-  const [isWorkspaceFullWidth, setIsWorkspaceFullWidth] = useState(false);
+  const [isWorkspaceFullWidth, setIsWorkspaceFullWidth] = useState(true);
   const [pendingBlockType, setPendingBlockType] = useState<string>("");
   const [mediaOverrides, setMediaOverrides] = useState<Record<string, string>>({});
 
@@ -154,6 +155,7 @@ export function SandboxClient({ component }: SandboxClientProps) {
   const resizeBoundsRef = useRef<{ left: number; width: number } | null>(null);
   const liveSplitPercentRef = useRef(splitPercent);
   const mediaOverridesRef = useRef<Record<string, string>>(mediaOverrides);
+  const mediaSelectionVersionByPathRef = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
     mediaOverridesRef.current = mediaOverrides;
@@ -364,12 +366,16 @@ export function SandboxClient({ component }: SandboxClientProps) {
   }, [component.id]);
 
   useEffect(() => {
+    const mediaSelectionVersionByPath = mediaSelectionVersionByPathRef.current;
+
     return () => {
       for (const value of Object.values(mediaOverridesRef.current)) {
         if (value.startsWith("blob:")) {
           URL.revokeObjectURL(value);
         }
       }
+
+      mediaSelectionVersionByPath.clear();
     };
   }, []);
 
@@ -408,13 +414,30 @@ export function SandboxClient({ component }: SandboxClientProps) {
 
   const handleSelectLocalMedia = useCallback(
     (pathKey: string, file: File | null) => {
+      const versionMap = mediaSelectionVersionByPathRef.current;
+      const nextVersion = (versionMap.get(pathKey) ?? 0) + 1;
+      versionMap.set(pathKey, nextVersion);
+
       if (!file) {
         updateMediaOverride(pathKey, null);
         return;
       }
 
-      const objectUrl = URL.createObjectURL(file);
-      updateMediaOverride(pathKey, objectUrl);
+      void readLocalMediaFileAsDataUrl(file)
+        .then((dataUrl) => {
+          if (versionMap.get(pathKey) !== nextVersion) {
+            return;
+          }
+
+          updateMediaOverride(pathKey, dataUrl);
+        })
+        .catch(() => {
+          if (versionMap.get(pathKey) !== nextVersion) {
+            return;
+          }
+
+          updateMediaOverride(pathKey, null);
+        });
     },
     [updateMediaOverride],
   );
@@ -458,10 +481,8 @@ export function SandboxClient({ component }: SandboxClientProps) {
           }),
         };
       });
-
-      updateMediaOverride(pathKey, null);
     },
-    [updateMediaOverride],
+    [],
   );
 
   const handleAddBlock = useCallback(() => {

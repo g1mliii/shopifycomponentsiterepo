@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 
 import type { PublicComponentCard as PublicComponentCardType } from "@/lib/components/public-types";

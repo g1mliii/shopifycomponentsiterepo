@@ -66,3 +66,27 @@ test("resource picker controls are treated as supported sandbox controls", () =>
   assert.equal(spec.simulated, false);
   assert.equal(spec.unknown, false);
 });
+
+test("text media URL settings support local file preview input", () => {
+  const setting = createSetting({
+    id: "video_url",
+    type: "text",
+    label: "Video URL",
+  });
+
+  const spec = getSettingControlSpec(setting);
+  assert.equal(spec.kind, "text");
+  assert.equal(spec.supportsLocalFilePreview, true);
+});
+
+test("generic text settings do not expose local file preview input", () => {
+  const setting = createSetting({
+    id: "heading",
+    type: "text",
+    label: "Heading",
+  });
+
+  const spec = getSettingControlSpec(setting);
+  assert.equal(spec.kind, "text");
+  assert.equal(spec.supportsLocalFilePreview, false);
+});

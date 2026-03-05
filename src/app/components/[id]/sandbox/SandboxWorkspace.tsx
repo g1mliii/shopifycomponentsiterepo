@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, RefObject } from "react";
 
 import { SettingControl } from "./setting-control";
@@ -20,6 +20,7 @@ const EMPTY_SETTING_LOOKUP = new Map<string, LiquidSchemaSetting>();
 
 type SandboxWorkspaceProps = {
   workspaceRef: RefObject<HTMLDivElement | null>;
+  previewIframeRef?: RefObject<HTMLIFrameElement | null>;
   workspaceStyle: CSSProperties;
   splitPercent: number;
   isResizing: boolean;
@@ -34,6 +35,7 @@ type SandboxWorkspaceProps = {
   blockSettingLookupByType: Map<string, Map<string, LiquidSchemaSetting>>;
   previewError: string | null;
   iframeDocument: string;
+  previewViewportAspectRatio?: string;
   onPendingBlockTypeChange: (value: string) => void;
   onAddBlock: () => void;
   onMoveBlock: (blockId: string, direction: "up" | "down") => void;
@@ -46,6 +48,7 @@ type SandboxWorkspaceProps = {
 
 export function SandboxWorkspace({
   workspaceRef,
+  previewIframeRef,
   workspaceStyle,
   splitPercent,
   isResizing,
@@ -60,6 +63,7 @@ export function SandboxWorkspace({
   blockSettingLookupByType,
   previewError,
   iframeDocument,
+  previewViewportAspectRatio,
   onPendingBlockTypeChange,
   onAddBlock,
   onMoveBlock,
@@ -70,6 +74,9 @@ export function SandboxWorkspace({
   onSplitterKeyDown,
 }: SandboxWorkspaceProps) {
   const hasBlockControls = schema.blocks.length > 0 || editorState.blocks.length > 0;
+  const hasPreviewAspectRatio = typeof previewViewportAspectRatio === "string"
+    && previewViewportAspectRatio.trim().length > 0;
+  const [collapsedBlockIds, setCollapsedBlockIds] = useState<Set<string>>(() => new Set());
 
   const blockDefinitionByType = useMemo(() => {
     const map = new Map<string, LiquidSchema["blocks"][number]>();
@@ -78,6 +85,46 @@ export function SandboxWorkspace({
     }
     return map;
   }, [schema.blocks]);
+
+  const collapsedActiveBlockCount = editorState.blocks.reduce((count, block) => {
+    return collapsedBlockIds.has(block.id) ? count + 1 : count;
+  }, 0);
+  const allBlocksCollapsed = editorState.blocks.length > 0 && collapsedActiveBlockCount === editorState.blocks.length;
+  const hasCollapsedBlocks = collapsedActiveBlockCount > 0;
+
+  const handleToggleBlockCollapsed = (blockId: string) => {
+    setCollapsedBlockIds((current) => {
+      const next = new Set(current);
+      if (next.has(blockId)) {
+        next.delete(blockId);
+      } else {
+        next.add(blockId);
+      }
+      return next;
+    });
+  };
+
+  const handleCollapseAllBlocks = () => {
+    setCollapsedBlockIds(new Set(editorState.blocks.map((block) => block.id)));
+  };
+
+  const handleExpandAllBlocks = () => {
+    setCollapsedBlockIds(new Set());
+  };
+
+  const handleRemoveBlockClick = (blockId: string) => {
+    setCollapsedBlockIds((current) => {
+      if (!current.has(blockId)) {
+        return current;
+      }
+
+      const next = new Set(current);
+      next.delete(blockId);
+      return next;
+    });
+
+    onRemoveBlock(blockId);
+  };
 
   return (
     <div
@@ -104,9 +151,9 @@ export function SandboxWorkspace({
               No section settings were found in schema.
             </div>
           ) : (
-            schema.settings.map((setting) => (
+            schema.settings.map((setting, settingIndex) => (
               <SettingControl
-                key={setting.id}
+                key={`${setting.id}:${settingIndex}`}
                 setting={setting}
                 value={editorState.sectionSettings[setting.id] ?? ""}
                 pathKey={getSectionSettingPath(setting.id)}
@@ -132,42 +179,74 @@ export function SandboxWorkspace({
                       Unsupported/simulated block settings: {blockUnsupportedSettingsCount}
                     </p>
                   </div>
-                  {schema.blocks.length > 0 ? (
-                    <div className="flex items-center gap-2">
-                      <select
-                        value={pendingBlockType}
-                        onChange={(event) => onPendingBlockTypeChange(event.target.value)}
-                        className="sandbox-input sandbox-focus-ring h-9 min-w-[11rem] px-3 text-xs"
-                      >
-                        {schema.blocks.map((block) => (
-                          <option key={block.type} value={block.type}>
-                            {getPlainLanguageSettingLabel(block.name)}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        disabled={!canAddSelectedBlock}
-                        onClick={onAddBlock}
-                        className="sandbox-btn sandbox-btn-secondary sandbox-focus-ring h-9 px-3 text-xs"
-                      >
-                        Add block
-                      </button>
-                    </div>
-                  ) : null}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {schema.blocks.length > 0 ? (
+                      <>
+                        <select
+                          value={pendingBlockType}
+                          onChange={(event) => onPendingBlockTypeChange(event.target.value)}
+                          className="sandbox-input sandbox-focus-ring h-9 min-w-[11rem] px-3 text-xs"
+                        >
+                          {schema.blocks.map((block) => (
+                            <option key={block.type} value={block.type}>
+                              {getPlainLanguageSettingLabel(block.name)}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          disabled={!canAddSelectedBlock}
+                          onClick={onAddBlock}
+                          className="sandbox-btn sandbox-btn-secondary sandbox-focus-ring h-9 px-3 text-xs"
+                        >
+                          Add block
+                        </button>
+                      </>
+                    ) : null}
+                    {editorState.blocks.length > 0 ? (
+                      <>
+                        <button
+                          type="button"
+                          disabled={allBlocksCollapsed}
+                          onClick={handleCollapseAllBlocks}
+                          className="sandbox-btn sandbox-btn-secondary sandbox-focus-ring h-9 px-3 text-xs"
+                        >
+                          Collapse all
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!hasCollapsedBlocks}
+                          onClick={handleExpandAllBlocks}
+                          className="sandbox-btn sandbox-btn-secondary sandbox-focus-ring h-9 px-3 text-xs"
+                        >
+                          Expand all
+                        </button>
+                      </>
+                    ) : null}
+                  </div>
                 </div>
               </div>
 
               {editorState.blocks.map((block, index) => {
                 const definition = blockDefinitionByType.get(block.type);
                 const settingLookup = blockSettingLookupByType.get(block.type) ?? EMPTY_SETTING_LOOKUP;
+                const isCollapsed = collapsedBlockIds.has(block.id);
+                const blockLabel = getPlainLanguageSettingLabel(definition?.name ?? block.type);
                 return (
-                  <div key={block.id} className="sandbox-card p-3">
+                  <div key={block.id} data-testid="sandbox-block-card" className="sandbox-card p-3">
                     <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                       <p className="sandbox-title text-sm font-semibold">
-                        Block {index + 1}: {getPlainLanguageSettingLabel(definition?.name ?? block.type)}
+                        Block {index + 1}: {blockLabel}
                       </p>
                       <div className="flex gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleBlockCollapsed(block.id)}
+                          className="sandbox-btn sandbox-btn-secondary sandbox-focus-ring h-8 rounded-lg px-2 text-xs"
+                          aria-expanded={!isCollapsed}
+                        >
+                          {isCollapsed ? "Expand" : "Collapse"}
+                        </button>
                         <button
                           type="button"
                           onClick={() => onMoveBlock(block.id, "up")}
@@ -186,7 +265,7 @@ export function SandboxWorkspace({
                         </button>
                         <button
                           type="button"
-                          onClick={() => onRemoveBlock(block.id)}
+                          onClick={() => handleRemoveBlockClick(block.id)}
                           className="sandbox-btn sandbox-btn-danger sandbox-focus-ring h-8 rounded-lg px-2 text-xs"
                         >
                           Remove
@@ -194,24 +273,30 @@ export function SandboxWorkspace({
                       </div>
                     </div>
 
-                    <div className="space-y-3">
-                      {(definition?.settings ?? []).map((setting) => (
-                        <SettingControl
-                          key={`${block.id}:${setting.id}`}
-                          setting={setting}
-                          value={block.settings[setting.id] ?? ""}
-                          pathKey={getBlockSettingPath(block.id, setting.id)}
-                          conditionalHints={getConditionalVisibilityHints(
-                            setting,
-                            block.settings[setting.id],
-                            block.settings,
-                            settingLookup,
-                          )}
-                          onChange={onSettingValueChange}
-                          onSelectLocalMedia={onSelectLocalMedia}
-                        />
-                      ))}
-                    </div>
+                    {isCollapsed ? (
+                      <p className="sandbox-muted text-xs">
+                        Settings hidden. Expand to edit this block.
+                      </p>
+                    ) : (
+                      <div data-testid="sandbox-block-settings" className="space-y-3">
+                        {(definition?.settings ?? []).map((setting, settingIndex) => (
+                          <SettingControl
+                            key={`${block.id}:${setting.id}:${settingIndex}`}
+                            setting={setting}
+                            value={block.settings[setting.id] ?? ""}
+                            pathKey={getBlockSettingPath(block.id, setting.id)}
+                            conditionalHints={getConditionalVisibilityHints(
+                              setting,
+                              block.settings[setting.id],
+                              block.settings,
+                              settingLookup,
+                            )}
+                            onChange={onSettingValueChange}
+                            onSelectLocalMedia={onSelectLocalMedia}
+                          />
+                        ))}
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -291,13 +376,36 @@ export function SandboxWorkspace({
           {previewError ? <p className="mt-1 text-xs" style={{ color: "#8f2f29" }}>{previewError}</p> : null}
         </header>
         <div className="min-h-0 w-full flex-1">
-          <iframe
-            title="Component preview"
-            srcDoc={iframeDocument}
-            sandbox="allow-scripts"
-            referrerPolicy="no-referrer"
-            className="h-full w-full border-0"
-          />
+          {hasPreviewAspectRatio ? (
+            <div className="flex h-full w-full items-start justify-center overflow-auto p-3">
+              <div
+                className="max-h-full max-w-full"
+                style={{
+                  aspectRatio: previewViewportAspectRatio,
+                  height: "100%",
+                  width: "auto",
+                }}
+              >
+                <iframe
+                  ref={previewIframeRef}
+                  title="Component preview"
+                  srcDoc={iframeDocument}
+                  sandbox="allow-scripts"
+                  referrerPolicy="no-referrer"
+                  className="h-full w-full rounded-md border-0 bg-white"
+                />
+              </div>
+            </div>
+          ) : (
+            <iframe
+              ref={previewIframeRef}
+              title="Component preview"
+              srcDoc={iframeDocument}
+              sandbox="allow-scripts"
+              referrerPolicy="no-referrer"
+              className="h-full w-full border-0"
+            />
+          )}
         </div>
       </section>
     </div>

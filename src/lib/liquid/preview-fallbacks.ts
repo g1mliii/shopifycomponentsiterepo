@@ -9,6 +9,10 @@ const SAMPLE_VIDEO_URL = "https://interactive-examples.mdn.mozilla.net/media/cc0
 const DEFAULT_RESOURCE_LIST_SIZE = 3;
 const DEFAULT_COLLECTION_PRODUCT_COUNT = 6;
 const MAX_PREVIEW_FALLBACK_CACHE_ENTRIES = 300;
+const TEXT_VIDEO_HINT_PATTERN = /(video|mp4|youtube|vimeo)/i;
+const TEXT_IMAGE_HINT_PATTERN = /(image|img|poster|thumbnail|photo|logo|background|banner|hero)/i;
+const TEXT_URL_HINT_PATTERN = /(url|src|source|file|path)/i;
+const DELAY_SETTING_HINT_PATTERN = /(delay|wait|after|timeout|timer)/i;
 
 const RESOURCE_PREFIX_BY_TYPE: Record<string, string> = {
   article: "articles",
@@ -462,6 +466,38 @@ function applySettingFallback(
 
   if (type === "link_list") {
     return toMenuValue(value, seed);
+  }
+
+  if ((type === "text" || type === "textarea") && isBlankString(value)) {
+    const hintText = `${setting.id} ${setting.label} ${setting.placeholder ?? ""}`.trim();
+
+    if (TEXT_VIDEO_HINT_PATTERN.test(hintText) && TEXT_URL_HINT_PATTERN.test(hintText)) {
+      return SAMPLE_VIDEO_URL;
+    }
+
+    if (
+      TEXT_IMAGE_HINT_PATTERN.test(hintText)
+      && (TEXT_URL_HINT_PATTERN.test(hintText) || TEXT_IMAGE_HINT_PATTERN.test(setting.id))
+    ) {
+      return createImagePlaceholder(seed, 1200, 800);
+    }
+  }
+
+  // Preview-only UX optimization: popup/timer sections that default to a delayed reveal can look empty.
+  // Keep authored values intact, but collapse untouched default delay/timer controls to 0 for first preview.
+  if ((type === "range" || type === "number") && typeof value === "number" && value > 0) {
+    const hintText = `${setting.id} ${setting.label} ${setting.info ?? ""}`.trim();
+    const isDelaySetting = DELAY_SETTING_HINT_PATTERN.test(hintText);
+    if (isDelaySetting) {
+      const defaultNumber =
+        typeof setting.defaultValue === "number"
+          ? setting.defaultValue
+          : (typeof setting.defaultValue === "string" ? Number.parseFloat(setting.defaultValue) : Number.NaN);
+
+      if (Number.isFinite(defaultNumber) && value === defaultNumber) {
+        return 0;
+      }
+    }
   }
 
   return value;

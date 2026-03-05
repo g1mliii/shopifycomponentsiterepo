@@ -57,6 +57,47 @@ const BLOCK_SOURCE = `<section>
 }
 {% endschema %}`;
 
+const TEXT_MEDIA_SOURCE = `<section>
+  <video id="section-video" controls><source src="{{ section.settings.video_url }}" type="video/mp4"></video>
+  <img id="section-image" src="{{ section.settings.image_url }}" alt="Section image" />
+  {% for block in section.blocks %}
+    <video id="block-video-{{ forloop.index }}" controls><source src="{{ block.settings.video_url }}" type="video/mp4"></video>
+  {% endfor %}
+</section>
+{% schema %}
+{
+  "name": "Text media URL fallback fixture",
+  "settings": [
+    { "type": "text", "id": "video_url", "label": "Video URL" },
+    { "type": "text", "id": "image_url", "label": "Image URL" }
+  ],
+  "blocks": [
+    {
+      "type": "video_item",
+      "name": "Video Item",
+      "settings": [
+        { "type": "text", "id": "video_url", "label": "Video URL" }
+      ]
+    }
+  ],
+  "presets": [{ "name": "Default" }]
+}
+{% endschema %}`;
+
+const DELAY_SOURCE = `<section>
+  <div id="delay-seconds">{{ section.settings.show_delay }}</div>
+</section>
+{% schema %}
+{
+  "name": "Delay fixture",
+  "settings": [
+    { "type": "range", "id": "show_delay", "label": "Show After (seconds)", "min": 0, "max": 10, "step": 1, "default": 2 }
+  ],
+  "blocks": [],
+  "presets": [{ "name": "Default" }]
+}
+{% endschema %}`;
+
 function parseAndBuild(source) {
   const parsed = parseLiquidSchema(source);
   assert.ok(parsed.schema);
@@ -120,4 +161,29 @@ test("preview fallbacks preserve explicit values already provided by the editor"
   assert.match(rendered.html, /id="menu">custom-menu\|One;Two;/);
   assert.match(rendered.html, /https:\/\/cdn\.example\.test\/hero\.jpg/);
   assert.match(rendered.html, /https:\/\/cdn\.example\.test\/video\.mp4/);
+});
+
+test("preview fallbacks infer media URLs for text-based media URL fields", async () => {
+  const { schema, state } = parseAndBuild(TEXT_MEDIA_SOURCE);
+  const fallbackState = applyLiquidPreviewFallbacks(schema, state);
+  const rendered = await renderLiquidPreview(TEXT_MEDIA_SOURCE, fallbackState);
+
+  assert.match(rendered.html, /interactive-examples\.mdn\.mozilla\.net\/media\/cc0-videos\/flower\.mp4/);
+  assert.match(rendered.html, /data:image\/svg\+xml/);
+});
+
+test("preview fallbacks collapse default delay settings for immediate visibility", () => {
+  const { schema, state } = parseAndBuild(DELAY_SOURCE);
+  assert.equal(state.sectionSettings.show_delay, 2);
+
+  const fallbackState = applyLiquidPreviewFallbacks(schema, state);
+  assert.equal(fallbackState.sectionSettings.show_delay, 0);
+});
+
+test("preview fallbacks preserve user-edited delay settings", () => {
+  const { schema, state } = parseAndBuild(DELAY_SOURCE);
+  state.sectionSettings.show_delay = 5;
+
+  const fallbackState = applyLiquidPreviewFallbacks(schema, state);
+  assert.equal(fallbackState.sectionSettings.show_delay, 5);
 });

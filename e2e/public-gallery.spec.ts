@@ -35,6 +35,55 @@ test("public gallery shell renders and starter content is removed", async ({ pag
   await expect(page.locator('[data-testid="public-component-card"]')).toHaveCount(12);
 });
 
+test("video thumbnails stay fitted and only activate on hover", async ({ page }) => {
+  if (!fixtures) {
+    return;
+  }
+
+  await page.goto(`/?query=${encodeURIComponent(fixtures.queryToken)}`);
+
+  const videoCard = page
+    .locator('[data-testid="public-component-card"]')
+    .filter({
+      has: page.getByRole("heading", { name: fixtures.firstComponentTitle }),
+    })
+    .first();
+
+  const secondaryCard = page.locator('[data-testid="public-component-card"]').nth(1);
+  const videoMedia = videoCard.getByTestId("public-thumbnail-media");
+
+  await expect(videoCard).toBeVisible();
+  await expect(videoCard.locator("video")).toHaveCount(1);
+  await expect(videoMedia).toHaveAttribute("data-video-hovered", "false");
+
+  const sizing = await videoCard.evaluate((card) => {
+    const media = card.querySelector('[data-testid="public-thumbnail-media"]');
+    const video = media?.querySelector("video");
+    if (!media || !video) {
+      return null;
+    }
+
+    const mediaRect = media.getBoundingClientRect();
+    const videoRect = video.getBoundingClientRect();
+    return {
+      objectFit: getComputedStyle(video).objectFit,
+      widthDelta: Math.abs(mediaRect.width - videoRect.width),
+      heightDelta: Math.abs(mediaRect.height - videoRect.height),
+    };
+  });
+
+  expect(sizing).not.toBeNull();
+  expect(sizing?.objectFit).toBe("cover");
+  expect(sizing?.widthDelta ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(1);
+  expect(sizing?.heightDelta ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(1);
+
+  await videoMedia.hover();
+  await expect(videoMedia).toHaveAttribute("data-video-hovered", "true");
+
+  await secondaryCard.getByTestId("public-thumbnail-media").hover();
+  await expect(videoMedia).toHaveAttribute("data-video-hovered", "false");
+});
+
 test("pagination is deterministic", async ({ page }) => {
   if (!fixtures) {
     return;

@@ -12,6 +12,9 @@ const SANDBOX_LIQUID_SOURCE = `{% assign heading = section.settings.heading %}
   {% if section.settings.show_heading %}
     <h2>{{ heading }}</h2>
   {% endif %}
+  {% if section.settings.hero_image != blank %}
+    <img class="hero-preview" src="{{ section.settings.hero_image | image_url: width: 800 }}" alt="Hero preview" />
+  {% endif %}
   <div class="slides">
     {% for block in section.blocks %}
       <article class="slide-item">{{ block.settings.title }}</article>

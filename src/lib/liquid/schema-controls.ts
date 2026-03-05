@@ -31,6 +31,18 @@ const JSON_TYPES = new Set(["collection_list", "metaobject_list", "product_list"
 const LOCAL_FILE_PREVIEW_TYPES = new Set(["image_picker", "video", "video_url"]);
 const SIMULATED_RESOURCE_TYPES = new Set(["product", "collection", "article", "blog", "page"]);
 const SIMULATED_RESOURCE_LIST_TYPES = new Set(["product_list", "collection_list", "metaobject_list"]);
+const MEDIA_HINT_PATTERN = /(image|img|poster|thumbnail|video|mp4|hero|background|banner|logo)/i;
+const URL_HINT_PATTERN = /(url|src|source|file|path)/i;
+
+function supportsHeuristicLocalMediaPreview(setting: LiquidSchemaSetting): boolean {
+  const type = setting.type.toLowerCase();
+  if (type !== "text" && type !== "textarea") {
+    return false;
+  }
+
+  const hintText = `${setting.id} ${setting.label} ${setting.placeholder ?? ""}`.trim();
+  return MEDIA_HINT_PATTERN.test(hintText) && URL_HINT_PATTERN.test(hintText);
+}
 
 function getUnknownControlSpec(setting: LiquidSchemaSetting): LiquidControlSpec {
   const defaultValue = setting.defaultValue;
@@ -66,13 +78,13 @@ function getUnknownControlSpec(setting: LiquidSchemaSetting): LiquidControlSpec 
   }
 
   return {
-    kind: "text",
-    inputType: "text",
-    simulated: false,
-    unknown: true,
-    supportsLocalFilePreview: false,
-  };
-}
+      kind: "text",
+      inputType: "text",
+      simulated: false,
+      unknown: true,
+      supportsLocalFilePreview: supportsHeuristicLocalMediaPreview(setting),
+    };
+  }
 
 export function getSettingControlSpec(setting: LiquidSchemaSetting): LiquidControlSpec {
   const type = setting.type.toLowerCase();
@@ -173,7 +185,7 @@ export function getSettingControlSpec(setting: LiquidSchemaSetting): LiquidContr
       inputType: "textarea",
       simulated: setting.support === "simulated",
       unknown: setting.support === "unknown",
-      supportsLocalFilePreview: false,
+      supportsLocalFilePreview: supportsHeuristicLocalMediaPreview(setting),
     };
   }
 
@@ -216,6 +228,6 @@ export function getSettingControlSpec(setting: LiquidSchemaSetting): LiquidContr
     inputType: "text",
     simulated: setting.support === "simulated",
     unknown: false,
-    supportsLocalFilePreview: false,
+    supportsLocalFilePreview: supportsHeuristicLocalMediaPreview(setting),
   };
 }

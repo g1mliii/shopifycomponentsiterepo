@@ -18,6 +18,151 @@ const liquidEngine = new Liquid({
   lenientIf: true,
 });
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseNamedFilterArgs(args: unknown[]): Record<string, unknown> {
+  const options: Record<string, unknown> = {};
+
+  for (const arg of args) {
+    if (!Array.isArray(arg) || arg.length !== 2) {
+      continue;
+    }
+
+    const [name, value] = arg;
+    if (typeof name !== "string") {
+      continue;
+    }
+
+    options[name] = value;
+  }
+
+  return options;
+}
+
+function toMediaSourceUrl(value: unknown): string {
+  if (typeof value === "string") {
+    return value.trim();
+  }
+
+  if (isRecord(value)) {
+    for (const key of ["src", "url", "featured_image", "image", "poster"]) {
+      const candidate = value[key];
+      if (typeof candidate === "string" && candidate.trim().length > 0) {
+        return candidate.trim();
+      }
+    }
+  }
+
+  return "";
+}
+
+function toBooleanFlag(value: unknown): boolean {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "number") {
+    return value !== 0;
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) {
+      return false;
+    }
+
+    if (normalized === "false" || normalized === "0" || normalized === "off" || normalized === "no") {
+      return false;
+    }
+
+    return true;
+  }
+
+  return Boolean(value);
+}
+
+function buildHtmlAttributeString(attributes: Record<string, unknown>): string {
+  const parts: string[] = [];
+
+  for (const [name, rawValue] of Object.entries(attributes)) {
+    if (rawValue === null || rawValue === undefined || rawValue === false) {
+      continue;
+    }
+
+    const escapedName = escapeHtmlAttribute(name);
+
+    if (rawValue === true) {
+      parts.push(`${escapedName}`);
+      continue;
+    }
+
+    parts.push(`${escapedName}="${escapeHtmlAttribute(String(rawValue))}"`);
+  }
+
+  return parts.length > 0 ? ` ${parts.join(" ")}` : "";
+}
+
+liquidEngine.registerFilter("image_url", (input: unknown) => {
+  return toMediaSourceUrl(input);
+});
+
+liquidEngine.registerFilter("image_tag", (input: unknown, ...args: unknown[]) => {
+  const source = toMediaSourceUrl(input);
+  if (!source) {
+    return "";
+  }
+
+  const options = parseNamedFilterArgs(args);
+  const attributes: Record<string, unknown> = {
+    src: source,
+    alt: typeof options.alt === "string" ? options.alt : "",
+    loading: typeof options.loading === "string" ? options.loading : undefined,
+    class: typeof options.class === "string" ? options.class : undefined,
+    width: typeof options.width === "number" || typeof options.width === "string" ? options.width : undefined,
+    height: typeof options.height === "number" || typeof options.height === "string" ? options.height : undefined,
+    sizes: typeof options.sizes === "string" ? options.sizes : undefined,
+    decoding: typeof options.decoding === "string" ? options.decoding : "async",
+  };
+
+  return `<img${buildHtmlAttributeString(attributes)} />`;
+});
+
+liquidEngine.registerFilter("video_tag", (input: unknown, ...args: unknown[]) => {
+  const source = toMediaSourceUrl(input);
+  if (!source) {
+    return "";
+  }
+
+  const options = parseNamedFilterArgs(args);
+  const attributes: Record<string, unknown> = {
+    class: typeof options.class === "string" ? options.class : undefined,
+    poster: toMediaSourceUrl(options.poster),
+    controls: options.controls === undefined ? true : toBooleanFlag(options.controls),
+    autoplay: toBooleanFlag(options.autoplay),
+    loop: toBooleanFlag(options.loop),
+    muted: toBooleanFlag(options.muted),
+    playsinline: options.playsinline === undefined ? true : toBooleanFlag(options.playsinline),
+  };
+
+  const mimeType = source.toLowerCase().includes(".webm") ? "video/webm" : "video/mp4";
+  return `<video${buildHtmlAttributeString(attributes)}><source src="${escapeHtmlAttribute(source)}" type="${mimeType}" /></video>`;
+});
+
+liquidEngine.registerFilter("money", (input: unknown) => {
+  const numericValue = typeof input === "number" ? input : Number.parseFloat(String(input));
+  if (!Number.isFinite(numericValue)) {
+    return input === null || input === undefined ? "" : String(input);
+  }
+
+  const normalized = Number.isInteger(numericValue) ? numericValue / 100 : numericValue;
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+  }).format(normalized);
+});
+
 function createAbortError(): Error {
   const error = new Error("Preview render aborted.");
   error.name = PREVIEW_ABORT_ERROR_NAME;

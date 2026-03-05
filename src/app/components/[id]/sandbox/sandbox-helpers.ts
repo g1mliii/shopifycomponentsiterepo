@@ -22,6 +22,11 @@ export function buildPreviewDocument(html: string): string {
     />
     <style>
       :root { color-scheme: light; }
+      html, body {
+        width: 100%;
+        max-width: 100%;
+        overflow-x: hidden;
+      }
       body {
         margin: 0;
         padding: 16px;
@@ -29,10 +34,93 @@ export function buildPreviewDocument(html: string): string {
         color: #111827;
         background: #ffffff;
       }
+      #pressplay-preview-root {
+        transform-origin: top center;
+      }
+      #pressplay-preview-root :where(img, video, iframe, svg, canvas) {
+        max-width: 100%;
+        height: auto;
+      }
       img, video { max-width: 100%; height: auto; }
     </style>
   </head>
-  <body>${html}</body>
+  <body>
+    <div id="pressplay-preview-root">${html}</div>
+    <script>
+      (function () {
+        var root = document.getElementById("pressplay-preview-root");
+        if (!root) {
+          return;
+        }
+
+        var rafId = 0;
+        var isScaleLocked = false;
+
+        function applyFitScale() {
+          if (isScaleLocked) {
+            return;
+          }
+
+          rafId = 0;
+
+          root.style.transform = "scale(1)";
+          root.style.width = "auto";
+
+          var viewportWidth = Math.max(320, window.innerWidth - 24);
+          var contentWidth = Math.max(1, root.scrollWidth);
+          var widthScale = viewportWidth / contentWidth;
+          var scale = Math.min(1, widthScale);
+
+          root.style.width = contentWidth + "px";
+          root.style.transform = "scale(" + scale + ")";
+          root.style.margin = "0 auto";
+
+          var scaledHeight = Math.ceil(root.scrollHeight * scale);
+          document.body.style.minHeight = scaledHeight + 24 + "px";
+        }
+
+        function queueFitScale() {
+          if (isScaleLocked) {
+            return;
+          }
+
+          if (rafId !== 0) {
+            return;
+          }
+
+          rafId = window.requestAnimationFrame(applyFitScale);
+        }
+
+        window.addEventListener("resize", queueFitScale, { passive: true });
+        window.addEventListener("message", function (event) {
+          var data = event ? event.data : null;
+          if (!data || typeof data !== "object") {
+            return;
+          }
+
+          if (data.type === "pressplay:lock-scale") {
+            isScaleLocked = true;
+            return;
+          }
+
+          if (data.type === "pressplay:unlock-scale") {
+            isScaleLocked = false;
+            queueFitScale();
+          }
+        });
+
+        if (document.readyState === "complete") {
+          queueFitScale();
+        } else {
+          window.addEventListener("load", queueFitScale, { once: true });
+        }
+
+        window.setTimeout(queueFitScale, 120);
+        window.setTimeout(queueFitScale, 600);
+        window.setTimeout(queueFitScale, 2200);
+      })();
+    </script>
+  </body>
 </html>`;
 }
 
@@ -40,6 +128,27 @@ export function createAbortError(): Error {
   const error = new Error("Preview render aborted.");
   error.name = "AbortError";
   return error;
+}
+
+export function readLocalMediaFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      if (typeof reader.result === "string" && reader.result.length > 0) {
+        resolve(reader.result);
+        return;
+      }
+
+      reject(new Error("Failed to read local media file."));
+    };
+
+    reader.onerror = () => {
+      reject(reader.error ?? new Error("Failed to read local media file."));
+    };
+
+    reader.readAsDataURL(file);
+  });
 }
 
 export function clampSplitPercent(value: number): number {

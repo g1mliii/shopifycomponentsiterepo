@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
 
 import { getSettingControlSpec } from "@/lib/liquid/schema-controls";
 import { getPlainLanguageSettingLabel, getSettingJargonHint } from "@/lib/liquid/setting-labels";
@@ -478,6 +478,7 @@ export const SettingControl = memo(function SettingControl({
   onChange,
   onSelectLocalMedia,
 }: SettingControlProps) {
+  const localMediaInputRef = useRef<HTMLInputElement | null>(null);
   const control = getSettingControlSpec(setting);
   const displayLabel = getPlainLanguageSettingLabel(setting.label);
   const jargonHint = getSettingJargonHint(setting.label);
@@ -717,6 +718,7 @@ export const SettingControl = memo(function SettingControl({
             Local preview file (not persisted)
           </label>
           <input
+            ref={localMediaInputRef}
             id={`${pathKey}:file`}
             type="file"
             accept="image/*,video/*"
@@ -730,6 +732,18 @@ export const SettingControl = memo(function SettingControl({
               borderColor: "color-mix(in srgb, var(--color-bark) 24%, var(--color-timber))",
             }}
           />
+          <button
+            type="button"
+            onClick={() => {
+              onSelectLocalMedia(pathKey, null);
+              if (localMediaInputRef.current) {
+                localMediaInputRef.current.value = "";
+              }
+            }}
+            className="sandbox-btn sandbox-btn-secondary sandbox-focus-ring mt-2 h-8 rounded-lg px-2 text-xs"
+          >
+            Clear Local Preview
+          </button>
         </div>
       ) : null}
     </div>

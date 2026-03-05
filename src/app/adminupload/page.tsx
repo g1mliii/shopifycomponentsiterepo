@@ -77,7 +77,7 @@ export default async function AdminUploadPage() {
     .limit(ADMIN_COMPONENT_LIST_LIMIT);
 
   return (
-    <main className="mx-auto min-h-dvh w-full max-w-5xl px-6 py-12">
+    <main className="mx-auto min-h-dvh w-full max-w-none px-4 py-8 sm:px-6 lg:px-8">
       <section className="rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm">
         <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">Component Admin Panel</h1>
         <p className="mt-2 text-sm text-zinc-600">

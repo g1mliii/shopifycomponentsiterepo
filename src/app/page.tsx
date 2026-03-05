@@ -1,14 +1,11 @@
 import type { Metadata } from "next";
 
-import { GalleryFilters } from "@/components/public-gallery/GalleryFilters";
-import { PaginationControls } from "@/components/public-gallery/PaginationControls";
-import { PublicComponentCard } from "@/components/public-gallery/PublicComponentCard";
+import { PublicGalleryContent } from "@/components/public-gallery/PublicGalleryContent";
 import {
-  getPublicThumbnailUrl,
   listPublicComponentsCached,
-  parsePublicComponentsQuery,
 } from "@/lib/components/public-query";
 import type { PublicComponentsResult } from "@/lib/components/public-types";
+import { PUBLIC_COMPONENTS_PAGE_SIZE } from "@/lib/components/public-query-params";
 import {
   BUSINESS_NAME,
   SITE_DESCRIPTION,
@@ -18,7 +15,7 @@ import {
 } from "@/lib/seo/site";
 import { createPublicServerSupabaseClient } from "@/lib/supabase/public-server";
 
-const EAGER_THUMBNAIL_COUNT = 3;
+export const dynamic = "force-static";
 export const revalidate = 120;
 
 export const metadata: Metadata = {
@@ -40,21 +37,18 @@ export const metadata: Metadata = {
   },
 };
 
-type HomePageProps = {
-  searchParams?: Promise<Record<string, string | string[] | undefined>>;
-};
-
-export default async function HomePage({ searchParams }: HomePageProps) {
-  const resolvedSearchParams =
-    (await searchParams) ?? ({} as Record<string, string | string[] | undefined>);
-
-  const query = parsePublicComponentsQuery(resolvedSearchParams);
+export default async function HomePage() {
   let result: PublicComponentsResult | null = null;
   let loadErrorMessage: string | null = null;
 
   try {
     const supabase = createPublicServerSupabaseClient();
-    result = await listPublicComponentsCached(supabase, query);
+    result = await listPublicComponentsCached(supabase, {
+      page: 1,
+      limit: PUBLIC_COMPONENTS_PAGE_SIZE,
+      query: "",
+      category: null,
+    });
   } catch (error) {
     loadErrorMessage = error instanceof Error ? error.message : "Failed to load public components.";
   }
@@ -140,7 +134,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
             position: index + 1,
             url: getAbsoluteUrl(`/components/${component.id}/sandbox`),
             name: component.title,
-            image: getPublicThumbnailUrl(component.thumbnail_path),
+            image: component.thumbnail_url,
           })),
         };
 
@@ -204,51 +198,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
         />
       </header>
 
-      <GalleryFilters
-        categories={result.categories}
-        initialQuery={result.query}
-        initialCategory={result.category}
-      />
-
-      <section className="relative mt-5">
-        <p className="mb-4 text-sm" style={{ color: "var(--color-muted-fg)" }}>
-          {result.total} result{result.total === 1 ? "" : "s"}
-        </p>
-
-        {result.components.length === 0 ? (
-          <div
-            className="p-6 text-sm"
-            style={{
-              borderRadius: "2rem",
-              border: "1px solid color-mix(in srgb, var(--color-timber) 50%, transparent)",
-              background: "var(--color-card)",
-              boxShadow: "var(--shadow-moss)",
-              color: "var(--color-muted-fg)",
-            }}
-          >
-            No components matched your current filters.
-          </div>
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {result.components.map((component, index) => (
-              <PublicComponentCard
-                key={component.id}
-                component={component}
-                thumbnailLoading={index < EAGER_THUMBNAIL_COUNT ? "eager" : "lazy"}
-                variant={(index % 3) as 0 | 1 | 2}
-              />
-            ))}
-          </div>
-        )}
-
-        <PaginationControls
-          basePath="/"
-          page={result.page}
-          totalPages={result.totalPages}
-          search={result.query}
-          category={result.category}
-        />
-      </section>
+      <PublicGalleryContent initialResult={result} />
     </main>
   );
 }

@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 
 function buildPageHref(basePath: string, targetPage: number, search: string, category: string | null): string {

@@ -70,3 +70,36 @@ test("renderLiquidPreview simulates Shopify section wrapper and block attributes
   assert.match(result.html, /data-block-id="block_tile_1"/);
   assert.match(result.html, /data-block-type="tile"/);
 });
+
+const SHOPIFY_FILTER_SOURCE = `<section>
+  <div id="hero-image">{{ section.settings.hero_image | image_url: width: 640 | image_tag: loading: 'lazy', alt: 'Hero image' }}</div>
+  <div id="hero-video">{{ section.settings.hero_video | video_tag: autoplay: true, loop: true, muted: true, controls: true }}</div>
+  <div id="price">{{ section.settings.price_cents | money }}</div>
+</section>
+{% schema %}
+{
+  "name": "Shopify filter fixture",
+  "settings": [
+    { "type": "image_picker", "id": "hero_image", "label": "Hero Image" },
+    { "type": "video_url", "id": "hero_video", "label": "Hero Video" },
+    { "type": "number", "id": "price_cents", "label": "Price Cents", "default": 2599 }
+  ],
+  "blocks": [],
+  "presets": [{ "name": "Default" }]
+}
+{% endschema %}`;
+
+test("renderLiquidPreview supports image_tag/video_tag/money Shopify-style filters", async () => {
+  const parsed = parseLiquidSchema(SHOPIFY_FILTER_SOURCE);
+  assert.ok(parsed.schema);
+
+  const state = buildInitialEditorState(parsed.schema);
+  state.sectionSettings.hero_image = "https://cdn.example.test/hero.jpg";
+  state.sectionSettings.hero_video = "https://cdn.example.test/hero.mp4";
+
+  const result = await renderLiquidPreview(SHOPIFY_FILTER_SOURCE, state);
+  assert.match(result.html, /<img[^>]+src="https:\/\/cdn\.example\.test\/hero\.jpg"/);
+  assert.match(result.html, /<video[^>]*>/);
+  assert.match(result.html, /<source src="https:\/\/cdn\.example\.test\/hero\.mp4" type="video\/mp4" \/>/);
+  assert.match(result.html, /\$25\.99/);
+});

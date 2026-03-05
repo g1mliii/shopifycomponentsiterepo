@@ -6,6 +6,15 @@ import { setupSandboxFixture, type SandboxFixtureContext } from "./helpers/sandb
 
 let fixture: SandboxFixtureContext | null = null;
 
+function extractSchemaFromLiquidSource(source: string): Record<string, unknown> {
+  const match = source.match(/{%\s*schema\s*%}([\s\S]*?){%\s*endschema\s*%}/i);
+  if (!match || typeof match[1] !== "string") {
+    throw new Error("Downloaded Liquid source does not contain a schema block.");
+  }
+
+  return JSON.parse(match[1]) as Record<string, unknown>;
+}
+
 test.beforeAll(async () => {
   fixture = await setupSandboxFixture();
 });
@@ -76,17 +85,27 @@ test("sandbox renders live preview and downloads patched liquid", async ({ page 
   expect(afterSplit).not.toBe(beforeSplit);
 
   await page.getByRole("button", { name: "Add block" }).click();
+  await page.getByRole("button", { name: "Add block" }).click();
   await expect(page.getByText(/Block 3:/)).toBeVisible();
+  await expect(page.getByText(/Block 4:/)).toBeVisible();
+  await expect(previewFrame.locator(".slide-item")).toHaveCount(4);
+  await expect(previewFrame.locator(".slide-item").last()).toContainText("Slide title");
 
-  const containedMaxWidth = await page.evaluate(() => getComputedStyle(document.querySelector("main")!).maxWidth);
-  expect(containedMaxWidth).toBe("1500px");
+  const fourthBlockCard = page.locator('[data-testid="sandbox-block-card"]').nth(3);
+  await fourthBlockCard.getByRole("button", { name: "Collapse" }).click();
+  await expect(fourthBlockCard.getByText("Settings hidden. Expand to edit this block.")).toBeVisible();
+  await fourthBlockCard.getByRole("button", { name: "Expand" }).click();
+  await expect(fourthBlockCard.getByTestId("sandbox-block-settings")).toBeVisible();
 
-  await page.getByRole("button", { name: "Fill Width" }).click();
-  await expect(page.getByRole("button", { name: "Contained Width" })).toBeVisible();
+  const defaultMaxWidth = await page.evaluate(() => getComputedStyle(document.querySelector("main")!).maxWidth);
+  expect(defaultMaxWidth).toBe("none");
+
+  await page.getByRole("button", { name: "Contained Width" }).click();
+  await expect(page.getByRole("button", { name: "Fill Width" })).toBeVisible();
   await expect(page.getByRole("separator", { name: "Resize editor and preview panels" })).toHaveCount(1);
   await expect(page.getByText("Section Settings")).toBeVisible();
 
-  const expandedLayoutMetrics = await page.evaluate(() => {
+  const containedLayoutMetrics = await page.evaluate(() => {
     const main = document.querySelector("main");
     const previewFrame = document.querySelector('iframe[title="Component preview"]');
     const previewContainer = previewFrame?.parentElement;
@@ -103,9 +122,9 @@ test("sandbox renders live preview and downloads patched liquid", async ({ page 
     };
   });
 
-  expect(expandedLayoutMetrics).not.toBeNull();
-  expect(expandedLayoutMetrics?.maxWidth).toBe("none");
-  expect(expandedLayoutMetrics?.previewToMainWidthRatio ?? 0).toBeGreaterThanOrEqual(0.35);
+  expect(containedLayoutMetrics).not.toBeNull();
+  expect(containedLayoutMetrics?.maxWidth).toBe("1500px");
+  expect(containedLayoutMetrics?.previewToMainWidthRatio ?? 0).toBeGreaterThanOrEqual(0.35);
 
   const [download] = await Promise.all([
     page.waitForEvent("download"),
@@ -118,6 +137,17 @@ test("sandbox renders live preview and downloads patched liquid", async ({ page 
   const patchedSource = await fs.readFile(downloadPath ?? "", "utf8");
   expect(patchedSource).toContain('"default": "Updated heading from e2e"');
   expect(patchedSource).toContain('"type": "slide"');
+
+  const parsedSchema = extractSchemaFromLiquidSource(patchedSource);
+  const presets = parsedSchema.presets;
+  expect(Array.isArray(presets)).toBeTruthy();
+  const firstPreset = Array.isArray(presets) ? presets[0] : null;
+  expect(firstPreset && typeof firstPreset === "object").toBeTruthy();
+  const presetBlocks = firstPreset && typeof firstPreset === "object"
+    ? (firstPreset as { blocks?: unknown }).blocks
+    : null;
+  expect(Array.isArray(presetBlocks)).toBeTruthy();
+  expect(Array.isArray(presetBlocks) ? presetBlocks.length : 0).toBe(4);
 });
 
 test("sandbox stacks workspace on narrow screens", async ({ page }) => {
@@ -164,32 +194,10 @@ test("sandbox stacks workspace on narrow screens", async ({ page }) => {
   expect(mobileLayoutMetrics?.pageOverflowXPx ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(1);
 });
 
-test("sandbox revokes local media object URLs when unmounted", async ({ page }) => {
+test("sandbox applies local media preview uploads inside iframe", async ({ page }) => {
   if (!fixture) {
     return;
   }
-
-  await page.addInitScript(() => {
-    const stats = {
-      creates: 0,
-      revokes: 0,
-    };
-
-    const originalCreateObjectUrl = URL.createObjectURL.bind(URL);
-    const originalRevokeObjectUrl = URL.revokeObjectURL.bind(URL);
-
-    URL.createObjectURL = ((object: Blob | MediaSource) => {
-      stats.creates += 1;
-      return originalCreateObjectUrl(object);
-    }) as typeof URL.createObjectURL;
-
-    URL.revokeObjectURL = ((url: string) => {
-      stats.revokes += 1;
-      originalRevokeObjectUrl(url);
-    }) as typeof URL.revokeObjectURL;
-
-    (window as Window & { __sandboxObjectUrlStats?: typeof stats }).__sandboxObjectUrlStats = stats;
-  });
 
   await page.goto(`/components/${encodeURIComponent(fixture.componentId)}/sandbox`);
   await expect(page.getByRole("heading", { name: "Liquid Sandbox" })).toBeVisible();
@@ -207,15 +215,15 @@ test("sandbox revokes local media object URLs when unmounted", async ({ page }) 
     ]),
   });
 
-  await page.getByRole("link", { name: "Back to Gallery" }).click();
-  await expect(page).toHaveURL("/");
+  const previewFrame = page.frameLocator('iframe[title="Component preview"]');
+  const heroPreviewImage = previewFrame.locator("img.hero-preview");
+  await expect(heroPreviewImage).toBeVisible();
+  await expect(heroPreviewImage).toHaveAttribute("src", /data:image\/png;base64/i);
 
-  const stats = await page.evaluate(
-    () =>
-      (window as Window & { __sandboxObjectUrlStats?: { creates: number; revokes: number } })
-        .__sandboxObjectUrlStats,
-  );
+  const heroImageUrlInput = page.locator('input[id="section:hero_image"]');
+  await heroImageUrlInput.fill("hero-image-name");
+  await expect(heroPreviewImage).toHaveAttribute("src", /data:image\/png;base64/i);
 
-  expect(stats?.creates ?? 0).toBeGreaterThan(0);
-  expect(stats?.revokes ?? 0).toBeGreaterThanOrEqual(stats?.creates ?? 0);
+  await page.getByRole("button", { name: "Clear Local Preview" }).first().click();
+  await expect(heroPreviewImage).not.toHaveAttribute("src", /data:image\/png;base64/i);
 });
