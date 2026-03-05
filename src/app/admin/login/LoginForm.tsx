@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { createBrowserSupabaseClient } from "@/lib/supabase/browser";
 
-const DEFAULT_NEXT_PATH = "/admin/upload";
+const DEFAULT_NEXT_PATH = "/adminupload";
 
 function getSafeNextPath(nextPathParam: string | null): string {
   if (!nextPathParam) {

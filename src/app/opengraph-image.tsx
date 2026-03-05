@@ -1,6 +1,6 @@
 import { ImageResponse } from "next/og";
 
-import { SITE_DESCRIPTION, SITE_NAME } from "@/lib/seo/site";
+import { SITE_DESCRIPTION, SITE_NAME, SITE_SHORT_NAME } from "@/lib/seo/site";
 
 export const runtime = "edge";
 export const contentType = "image/png";
@@ -48,7 +48,7 @@ export default function OpenGraphImage() {
                 background: BRAND_ACCENT,
               }}
             />
-            <div style={{ fontSize: "28px", fontWeight: 600 }}>PressPlay</div>
+            <div style={{ fontSize: "28px", fontWeight: 600 }}>{SITE_SHORT_NAME}</div>
           </div>
           <div style={{ display: "flex", flexDirection: "column", maxWidth: "920px", gap: "16px" }}>
             <div style={{ fontSize: "72px", fontWeight: 700, lineHeight: 1.05 }}>{SITE_NAME}</div>

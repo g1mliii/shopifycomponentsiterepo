@@ -1,4 +1,4 @@
-# PressPlay Shopify Components
+# Shopify Components
 
 Baseline repository for a Shopify Liquid component gallery built with Next.js, TypeScript, Tailwind, and Supabase.
 

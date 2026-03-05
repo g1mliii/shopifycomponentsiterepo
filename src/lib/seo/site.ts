@@ -1,8 +1,8 @@
 const LOCALHOST_ORIGIN = "http://localhost:3000";
 
-export const BUSINESS_NAME = "PressPlay";
-export const SITE_NAME = "PressPlay Shopify Components";
-export const SITE_SHORT_NAME = "PressPlay";
+export const BUSINESS_NAME = "Shopify Components";
+export const SITE_NAME = "Shopify Components";
+export const SITE_SHORT_NAME = "Shopify Components";
 export const SITE_DESCRIPTION =
   "Browse production-ready Shopify Liquid components with fast previews and one-click downloads.";
 export const DEFAULT_LOCALE = "en_US";

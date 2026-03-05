@@ -7,7 +7,7 @@ import { LoginForm } from "./LoginForm";
 
 export const metadata: Metadata = {
   title: "Admin Login",
-  description: "Secure admin login for PressPlay Shopify Components.",
+  description: "Secure admin login for Shopify Components.",
   robots: {
     index: false,
     follow: false,
@@ -43,7 +43,7 @@ export default async function AdminLoginPage({
   const nextPathParam = getNextSearchParamValue(resolvedSearchParams.next);
 
   if (adminResult.ok) {
-    redirect("/admin/upload");
+    redirect("/adminupload");
   }
 
   return (

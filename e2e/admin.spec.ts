@@ -22,7 +22,7 @@ async function loginAs(
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: /sign in/i }).click();
-  await expect(page).toHaveURL(/\/admin\/upload/);
+  await expect(page).toHaveURL(/\/adminupload/);
 }
 
 test.beforeAll(async () => {
@@ -40,7 +40,7 @@ test.beforeEach(() => {
 });
 
 test("unauthenticated user is redirected to admin login", async ({ page }) => {
-  await page.goto("/admin/upload");
+  await page.goto("/adminupload");
   await expect(page).toHaveURL(/\/admin\/login/);
   await expect(page.getByRole("heading", { name: /admin login/i })).toBeVisible();
 });
