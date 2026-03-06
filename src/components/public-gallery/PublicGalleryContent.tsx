@@ -65,9 +65,13 @@ function isPublicComponentsResult(value: unknown): value is PublicComponentsResu
 
 type PublicGalleryContentProps = {
   initialResult: PublicComponentsResult;
+  initialLoadErrorMessage?: string | null;
 };
 
-export function PublicGalleryContent({ initialResult }: PublicGalleryContentProps) {
+export function PublicGalleryContent({
+  initialResult,
+  initialLoadErrorMessage = null,
+}: PublicGalleryContentProps) {
   const searchParams = useSearchParams();
 
   const currentQuery = useMemo(
@@ -88,8 +92,8 @@ export function PublicGalleryContent({ initialResult }: PublicGalleryContentProp
   );
 
   const [result, setResult] = useState<PublicComponentsResult>(initialResult);
-  const [activeQueryKey, setActiveQueryKey] = useState(initialQueryKey);
-  const [loadErrorMessage, setLoadErrorMessage] = useState<string | null>(null);
+  const [activeQueryKey, setActiveQueryKey] = useState(initialLoadErrorMessage ? "" : initialQueryKey);
+  const [loadErrorMessage, setLoadErrorMessage] = useState<string | null>(initialLoadErrorMessage);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {

@@ -20,7 +20,6 @@ const EMPTY_SETTING_LOOKUP = new Map<string, LiquidSchemaSetting>();
 
 type SandboxWorkspaceProps = {
   workspaceRef: RefObject<HTMLDivElement | null>;
-  previewIframeRef?: RefObject<HTMLIFrameElement | null>;
   workspaceStyle: CSSProperties;
   splitPercent: number;
   isResizing: boolean;
@@ -48,7 +47,6 @@ type SandboxWorkspaceProps = {
 
 export function SandboxWorkspace({
   workspaceRef,
-  previewIframeRef,
   workspaceStyle,
   splitPercent,
   isResizing,
@@ -387,7 +385,6 @@ export function SandboxWorkspace({
                 }}
               >
                 <iframe
-                  ref={previewIframeRef}
                   title="Component preview"
                   srcDoc={iframeDocument}
                   sandbox="allow-scripts"
@@ -398,7 +395,6 @@ export function SandboxWorkspace({
             </div>
           ) : (
             <iframe
-              ref={previewIframeRef}
               title="Component preview"
               srcDoc={iframeDocument}
               sandbox="allow-scripts"

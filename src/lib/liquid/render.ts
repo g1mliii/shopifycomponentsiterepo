@@ -11,6 +11,10 @@ const PREVIEW_ABORT_ERROR_NAME = "AbortError";
 const PREVIEW_SECTION_ID = "pressplay-preview-section";
 
 const templateCache = new Map<string, Template[]>();
+const USD_MONEY_FORMATTER = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+});
 
 const liquidEngine = new Liquid({
   strictFilters: false,
@@ -157,10 +161,7 @@ liquidEngine.registerFilter("money", (input: unknown) => {
   }
 
   const normalized = Number.isInteger(numericValue) ? numericValue / 100 : numericValue;
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(normalized);
+  return USD_MONEY_FORMATTER.format(normalized);
 });
 
 function createAbortError(): Error {

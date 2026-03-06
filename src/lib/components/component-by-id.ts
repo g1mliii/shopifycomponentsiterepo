@@ -6,7 +6,7 @@ export interface PublicComponentById {
   id: string;
   title: string;
   category: string;
-  thumbnail_path: string;
+  thumbnail_path: string | null;
   created_at: string;
 }
 

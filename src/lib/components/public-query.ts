@@ -21,7 +21,7 @@ type PublicComponentsRow = {
   id: string;
   title: string;
   category: string;
-  thumbnail_path: string;
+  thumbnail_path: string | null;
   created_at: string;
 };
 
@@ -178,7 +178,7 @@ function parseBatchRpcRows(value: unknown): PublicComponentsRow[] | null {
       typeof row.id !== "string" ||
       typeof row.title !== "string" ||
       typeof row.category !== "string" ||
-      typeof row.thumbnail_path !== "string" ||
+      !(typeof row.thumbnail_path === "string" || row.thumbnail_path === null) ||
       typeof row.created_at !== "string"
     ) {
       return null;
@@ -305,7 +305,11 @@ function getPublicSupabaseUrl(): string {
   return value;
 }
 
-export function getPublicThumbnailUrl(pathValue: string): string {
+export function getPublicThumbnailUrl(pathValue: string | null): string | null {
+  if (!pathValue) {
+    return null;
+  }
+
   return `${getPublicSupabaseUrl()}/storage/v1/object/public/component-thumbnails/${encodeStoragePath(pathValue)}`;
 }
 

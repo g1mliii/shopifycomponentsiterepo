@@ -5,6 +5,7 @@ import { NO_STORE_PRIVATE_CACHE_CONTROL, apiError } from "@/lib/api/errors";
 import { guardAdminMutationRequest } from "@/lib/security/admin-request-guard";
 import {
   type ValidationIssue,
+  validateThumbnailFileInput,
   validateUploadComponentInput,
 } from "@/lib/validation/upload-component";
 
@@ -17,14 +18,14 @@ type StoredComponent = {
   id: string;
   title: string;
   category: string;
-  thumbnail_path: string;
+  thumbnail_path: string | null;
   file_path: string;
   created_at: string;
   updated_at: string;
 };
 
 type ComponentsAuditEvent = {
-  action: "list" | "upload" | "delete";
+  action: "list" | "upload" | "update_thumbnail" | "delete";
   requestId: string;
   userId?: string;
   result:
@@ -42,7 +43,10 @@ type ComponentsAuditEvent = {
     | "validation_failed"
     | "upload_failed"
     | "db_insert_failed"
-    | "upload_success";
+    | "upload_success"
+    | "db_update_failed"
+    | "update_success"
+    | "update_success_with_storage_cleanup_warning";
   status: number;
   durationMs: number;
   componentId?: string;
@@ -134,6 +138,26 @@ function isFile(value: FormDataEntryValue | null): value is File {
   return value instanceof File;
 }
 
+function parseOptionalFile(value: FormDataEntryValue | null): { ok: true; file: File | null } | { ok: false } {
+  if (value === null) {
+    return { ok: true, file: null };
+  }
+
+  if (!(value instanceof File)) {
+    return { ok: false };
+  }
+
+  if (value.name === "" && value.size === 0) {
+    return { ok: true, file: null };
+  }
+
+  return { ok: true, file: value };
+}
+
+function buildThumbnailStoragePath(componentId: string, extension: string): string {
+  return `components/${componentId}/thumbnail-${crypto.randomUUID()}${extension}`;
+}
+
 function errorMessageFromUnknown(error: unknown): string {
   if (error instanceof Error) {
     return error.message;
@@ -156,17 +180,19 @@ async function deleteStorageForComponent(
   component: Pick<StoredComponent, "thumbnail_path" | "file_path">,
 ): Promise<string[]> {
   const removeTargets = [
-    {
-      label: "thumbnail",
-      bucket: "component-thumbnails" as const,
-      path: component.thumbnail_path,
-    },
+    component.thumbnail_path
+      ? {
+          label: "thumbnail",
+          bucket: "component-thumbnails" as const,
+          path: component.thumbnail_path,
+        }
+      : null,
     {
       label: "liquid_file",
       bucket: "liquid-files" as const,
       path: component.file_path,
     },
-  ];
+  ].filter((target): target is { label: string; bucket: "component-thumbnails" | "liquid-files"; path: string } => Boolean(target));
 
   const removeResults = await Promise.allSettled(
     removeTargets.map(({ bucket, path }) => supabase.storage.from(bucket).remove([path])),
@@ -295,13 +321,13 @@ export async function POST(request: Request) {
     const formData = await request.formData();
     const title = formData.get("title");
     const category = formData.get("category");
-    const thumbnail = formData.get("thumbnail");
+    const parsedThumbnail = parseOptionalFile(formData.get("thumbnail"));
     const liquidFile = formData.get("liquidFile");
 
     if (
       typeof title !== "string" ||
       typeof category !== "string" ||
-      !isFile(thumbnail) ||
+      !parsedThumbnail.ok ||
       !isFile(liquidFile)
     ) {
       logComponentsAudit({
@@ -318,7 +344,7 @@ export async function POST(request: Request) {
     const validationResult = validateUploadComponentInput({
       title,
       category,
-      thumbnailFile: thumbnail,
+      thumbnailFile: parsedThumbnail.file,
       liquidFile,
     });
 
@@ -341,17 +367,22 @@ export async function POST(request: Request) {
     }
 
     const componentId = crypto.randomUUID();
-    const thumbnailPath = `components/${componentId}/thumbnail${validationResult.data.thumbnailExtension}`;
+    const thumbnailPath =
+      validationResult.data.thumbnailExtension !== null
+        ? buildThumbnailStoragePath(componentId, validationResult.data.thumbnailExtension)
+        : null;
     const filePath = `components/${componentId}/component${validationResult.data.liquidExtension}`;
 
     const [thumbnailUploadResult, liquidUploadResult] = await Promise.all([
-      supabase.storage
-        .from("component-thumbnails")
-        .upload(thumbnailPath, validationResult.data.thumbnailFile, {
-          contentType: validationResult.data.thumbnailMimeType,
-          cacheControl: "31536000",
-          upsert: false,
-        }),
+      thumbnailPath && validationResult.data.thumbnailFile && validationResult.data.thumbnailMimeType
+        ? supabase.storage
+            .from("component-thumbnails")
+            .upload(thumbnailPath, validationResult.data.thumbnailFile, {
+              contentType: validationResult.data.thumbnailMimeType,
+              cacheControl: "31536000",
+              upsert: false,
+            })
+        : Promise.resolve({ error: null }),
       supabase.storage
         .from("liquid-files")
         .upload(filePath, validationResult.data.liquidFile, {
@@ -361,7 +392,7 @@ export async function POST(request: Request) {
         }),
     ]);
 
-    if (!thumbnailUploadResult.error) {
+    if (thumbnailPath && !thumbnailUploadResult.error) {
       uploadedObjects.push({
         bucket: "component-thumbnails",
         path: thumbnailPath,
@@ -457,6 +488,278 @@ export async function POST(request: Request) {
       durationMs: Date.now() - startedAt,
     });
     return apiError(500, "upload_failed", "Unexpected upload failure.", requestId);
+  }
+}
+
+export async function PATCH(request: Request) {
+  const startedAt = Date.now();
+  const requestId = crypto.randomUUID();
+  const requestGuard = guardAdminMutationRequest(request);
+
+  if (!requestGuard.ok) {
+    logComponentsAudit({
+      action: "update_thumbnail",
+      requestId,
+      result: "request_rejected",
+      status: requestGuard.status,
+      durationMs: Date.now() - startedAt,
+    });
+    return apiError(requestGuard.status, requestGuard.code, requestGuard.message, requestId);
+  }
+
+  const authResult = await requireAdmin();
+
+  if (!authResult.ok) {
+    const status = authResult.status;
+    logComponentsAudit({
+      action: "update_thumbnail",
+      requestId,
+      result: "auth_rejected",
+      status,
+      durationMs: Date.now() - startedAt,
+    });
+    return apiError(status, authResult.code, authResult.message, requestId);
+  }
+
+  const { supabase, user } = authResult;
+  const uploadedObjects: UploadedObjectRef[] = [];
+
+  try {
+    const formData = await request.formData();
+    const componentId = formData.get("id");
+    const parsedThumbnail = parseOptionalFile(formData.get("thumbnail"));
+
+    const hasValidComponentId = typeof componentId === "string" && COMPONENT_ID_REGEX.test(componentId);
+    const thumbnailFile = parsedThumbnail.ok ? parsedThumbnail.file : null;
+
+    if (!hasValidComponentId || !parsedThumbnail.ok || !thumbnailFile) {
+      logComponentsAudit({
+        action: "update_thumbnail",
+        requestId,
+        userId: user.id,
+        componentId: typeof componentId === "string" ? componentId : undefined,
+        result: !hasValidComponentId
+          ? "invalid_component_id"
+          : "payload_invalid",
+        status: 400,
+        durationMs: Date.now() - startedAt,
+      });
+      return apiError(
+        400,
+        !hasValidComponentId
+          ? "invalid_component_id"
+          : "invalid_payload",
+        !hasValidComponentId
+          ? "A valid component id is required."
+          : "A thumbnail file is required.",
+        requestId,
+      );
+    }
+
+    const validationResult = validateThumbnailFileInput(thumbnailFile);
+    if (!validationResult.ok) {
+      const status = hasFileTooLargeIssue(validationResult.issues) ? 413 : 400;
+      logComponentsAudit({
+        action: "update_thumbnail",
+        requestId,
+        userId: user.id,
+        componentId,
+        result: "validation_failed",
+        status,
+        durationMs: Date.now() - startedAt,
+      });
+      return apiError(
+        status,
+        "validation_failed",
+        firstValidationMessage(validationResult.issues),
+        requestId,
+      );
+    }
+
+    const { data: existingComponent, error: lookupError } = await supabase
+      .from("shopify_components")
+      .select(COMPONENT_SELECT)
+      .eq("id", componentId)
+      .maybeSingle();
+
+    if (lookupError) {
+      logComponentsAudit({
+        action: "update_thumbnail",
+        requestId,
+        userId: user.id,
+        componentId,
+        result: "db_update_failed",
+        status: 500,
+        durationMs: Date.now() - startedAt,
+      });
+      return apiError(500, "update_failed", "Failed to load component before thumbnail update.", requestId);
+    }
+
+    if (!existingComponent) {
+      logComponentsAudit({
+        action: "update_thumbnail",
+        requestId,
+        userId: user.id,
+        componentId,
+        result: "component_not_found",
+        status: 404,
+        durationMs: Date.now() - startedAt,
+      });
+      return apiError(404, "component_not_found", "Component not found.", requestId);
+    }
+
+    const thumbnailPath = buildThumbnailStoragePath(
+      componentId,
+      validationResult.data.thumbnailExtension,
+    );
+    const thumbnailUploadResult = await supabase.storage
+      .from("component-thumbnails")
+      .upload(thumbnailPath, validationResult.data.thumbnailFile, {
+        contentType: validationResult.data.thumbnailMimeType,
+        cacheControl: "31536000",
+        upsert: false,
+      });
+
+    if (!thumbnailUploadResult.error) {
+      uploadedObjects.push({
+        bucket: "component-thumbnails",
+        path: thumbnailPath,
+      });
+    }
+
+    if (thumbnailUploadResult.error) {
+      logComponentsAudit({
+        action: "update_thumbnail",
+        requestId,
+        userId: user.id,
+        componentId,
+        result: "upload_failed",
+        status: 500,
+        durationMs: Date.now() - startedAt,
+      });
+      return apiError(500, "update_failed", "Thumbnail upload failed.", requestId);
+    }
+
+    const previousThumbnailPath = existingComponent.thumbnail_path;
+    let updateQuery = supabase
+      .from("shopify_components")
+      .update({
+        thumbnail_path: thumbnailPath,
+      })
+      .eq("id", componentId);
+
+    updateQuery = previousThumbnailPath === null
+      ? updateQuery.is("thumbnail_path", null)
+      : updateQuery.eq("thumbnail_path", previousThumbnailPath);
+
+    const { data: updatedComponent, error: updateError } = await updateQuery
+      .select(COMPONENT_SELECT)
+      .maybeSingle();
+
+    if (updateError) {
+      await cleanupUploadedObjects(supabase, uploadedObjects, requestId);
+      logComponentsAudit({
+        action: "update_thumbnail",
+        requestId,
+        userId: user.id,
+        componentId,
+        result: "db_update_failed",
+        status: 500,
+        durationMs: Date.now() - startedAt,
+      });
+      return apiError(500, "update_failed", "Failed to update component thumbnail.", requestId);
+    }
+
+    if (!updatedComponent) {
+      await cleanupUploadedObjects(supabase, uploadedObjects, requestId);
+      logComponentsAudit({
+        action: "update_thumbnail",
+        requestId,
+        userId: user.id,
+        componentId,
+        result: "db_update_failed",
+        status: 409,
+        durationMs: Date.now() - startedAt,
+      });
+      return apiError(409, "update_conflict", "Thumbnail changed concurrently. Refresh and try again.", requestId);
+    }
+
+    if (previousThumbnailPath && previousThumbnailPath !== thumbnailPath) {
+      const { error: previousThumbnailDeleteError } = await supabase.storage
+        .from("component-thumbnails")
+        .remove([previousThumbnailPath]);
+
+      if (previousThumbnailDeleteError && !isMissingObjectDeleteError(previousThumbnailDeleteError.message)) {
+        console.warn(
+          "[admin-components-thumbnail-update] previous_thumbnail_cleanup_failed",
+          JSON.stringify({
+            requestId,
+            componentId,
+            previousThumbnailPath,
+            reason: previousThumbnailDeleteError.message,
+          }),
+        );
+        logComponentsAudit({
+          action: "update_thumbnail",
+          requestId,
+          userId: user.id,
+          componentId,
+          result: "update_success_with_storage_cleanup_warning",
+          status: 200,
+          durationMs: Date.now() - startedAt,
+        });
+
+        return NextResponse.json(
+          {
+            component: updatedComponent as StoredComponent,
+            requestId,
+          },
+          {
+            status: 200,
+            headers: {
+              "Cache-Control": NO_STORE_PRIVATE_CACHE_CONTROL,
+            },
+          },
+        );
+      }
+    }
+
+    logComponentsAudit({
+      action: "update_thumbnail",
+      requestId,
+      userId: user.id,
+      componentId,
+      result: "update_success",
+      status: 200,
+      durationMs: Date.now() - startedAt,
+    });
+
+    return NextResponse.json(
+      {
+        component: updatedComponent as StoredComponent,
+        requestId,
+      },
+      {
+        status: 200,
+        headers: {
+          "Cache-Control": NO_STORE_PRIVATE_CACHE_CONTROL,
+        },
+      },
+    );
+  } catch {
+    if (uploadedObjects.length > 0) {
+      await cleanupUploadedObjects(supabase, uploadedObjects, requestId);
+    }
+
+    logComponentsAudit({
+      action: "update_thumbnail",
+      requestId,
+      userId: user.id,
+      result: "upload_failed",
+      status: 500,
+      durationMs: Date.now() - startedAt,
+    });
+    return apiError(500, "update_failed", "Unexpected thumbnail update failure.", requestId);
   }
 }
 

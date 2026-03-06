@@ -43,19 +43,25 @@ const categorySchema = z
 export interface UploadComponentInput {
   title: string;
   category: string;
-  thumbnailFile: File;
+  thumbnailFile: File | null;
   liquidFile: File;
 }
 
 export interface ValidatedUploadComponentInput {
   title: string;
   category: string;
-  thumbnailFile: File;
+  thumbnailFile: File | null;
   liquidFile: File;
-  thumbnailMimeType: string;
+  thumbnailMimeType: string | null;
   liquidMimeType: string;
-  thumbnailExtension: string;
+  thumbnailExtension: string | null;
   liquidExtension: string;
+}
+
+export interface ValidatedThumbnailFileInput {
+  thumbnailFile: File;
+  thumbnailMimeType: string;
+  thumbnailExtension: string;
 }
 
 export interface ValidationIssue {
@@ -124,30 +130,12 @@ export function validateUploadComponentInput(
     });
   }
 
-  const thumbnailExtension = getFileExtension(input.thumbnailFile.name);
-  const thumbnailMimeType = input.thumbnailFile.type.toLowerCase();
-  const thumbnailAllowedExtensions = thumbnailMimeToExtensions[thumbnailMimeType];
+  const validatedThumbnail = input.thumbnailFile
+    ? validateThumbnailFileInput(input.thumbnailFile)
+    : null;
 
-  if (!thumbnailAllowedExtensions) {
-    issues.push({
-      field: "thumbnailFile",
-      code: "invalid_mime",
-      message: "Thumbnail MIME type is not allowed.",
-    });
-  } else if (!thumbnailAllowedExtensions.includes(thumbnailExtension)) {
-    issues.push({
-      field: "thumbnailFile",
-      code: "invalid_extension",
-      message: "Thumbnail extension does not match MIME type.",
-    });
-  }
-
-  if (input.thumbnailFile.size > THUMBNAIL_MAX_BYTES) {
-    issues.push({
-      field: "thumbnailFile",
-      code: "file_too_large",
-      message: `Thumbnail exceeds ${THUMBNAIL_MAX_BYTES} bytes.`,
-    });
+  if (validatedThumbnail && !validatedThumbnail.ok) {
+    issues.push(...validatedThumbnail.issues);
   }
 
   const liquidExtension = getFileExtension(input.liquidFile.name);
@@ -189,12 +177,59 @@ export function validateUploadComponentInput(
     data: {
       title: titleResult.data,
       category: categoryResult.data,
-      thumbnailFile: input.thumbnailFile,
+      thumbnailFile: validatedThumbnail?.ok ? validatedThumbnail.data.thumbnailFile : null,
       liquidFile: input.liquidFile,
-      thumbnailMimeType,
+      thumbnailMimeType: validatedThumbnail?.ok ? validatedThumbnail.data.thumbnailMimeType : null,
       liquidMimeType,
-      thumbnailExtension,
+      thumbnailExtension: validatedThumbnail?.ok ? validatedThumbnail.data.thumbnailExtension : null,
       liquidExtension,
+    },
+  };
+}
+
+export function validateThumbnailFileInput(
+  thumbnailFile: File,
+): { ok: true; data: ValidatedThumbnailFileInput } | ValidationFailure {
+  const issues: ValidationIssue[] = [];
+  const thumbnailExtension = getFileExtension(thumbnailFile.name);
+  const thumbnailMimeType = thumbnailFile.type.toLowerCase();
+  const thumbnailAllowedExtensions = thumbnailMimeToExtensions[thumbnailMimeType];
+
+  if (!thumbnailAllowedExtensions) {
+    issues.push({
+      field: "thumbnailFile",
+      code: "invalid_mime",
+      message: "Thumbnail MIME type is not allowed.",
+    });
+  } else if (!thumbnailAllowedExtensions.includes(thumbnailExtension)) {
+    issues.push({
+      field: "thumbnailFile",
+      code: "invalid_extension",
+      message: "Thumbnail extension does not match MIME type.",
+    });
+  }
+
+  if (thumbnailFile.size > THUMBNAIL_MAX_BYTES) {
+    issues.push({
+      field: "thumbnailFile",
+      code: "file_too_large",
+      message: `Thumbnail exceeds ${THUMBNAIL_MAX_BYTES} bytes.`,
+    });
+  }
+
+  if (issues.length > 0) {
+    return {
+      ok: false,
+      issues,
+    };
+  }
+
+  return {
+    ok: true,
+    data: {
+      thumbnailFile,
+      thumbnailMimeType,
+      thumbnailExtension,
     },
   };
 }

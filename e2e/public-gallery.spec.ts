@@ -53,8 +53,12 @@ test("video thumbnails stay fitted and only activate on hover", async ({ page })
   const videoMedia = videoCard.getByTestId("public-thumbnail-media");
 
   await expect(videoCard).toBeVisible();
-  await expect(videoCard.locator("video")).toHaveCount(1);
+  await expect(videoCard.locator("video")).toHaveCount(0);
   await expect(videoMedia).toHaveAttribute("data-video-hovered", "false");
+
+  await videoMedia.hover();
+  await expect(videoMedia).toHaveAttribute("data-video-hovered", "true");
+  await expect(videoCard.locator("video")).toHaveCount(1);
 
   const sizing = await videoCard.evaluate((card) => {
     const media = card.querySelector('[data-testid="public-thumbnail-media"]');
@@ -69,19 +73,26 @@ test("video thumbnails stay fitted and only activate on hover", async ({ page })
       objectFit: getComputedStyle(video).objectFit,
       widthDelta: Math.abs(mediaRect.width - videoRect.width),
       heightDelta: Math.abs(mediaRect.height - videoRect.height),
+      widthOverflow: videoRect.width - mediaRect.width,
+      heightOverflow: videoRect.height - mediaRect.height,
     };
   });
 
   expect(sizing).not.toBeNull();
-  expect(sizing?.objectFit).toBe("cover");
-  expect(sizing?.widthDelta ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(1);
-  expect(sizing?.heightDelta ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(1);
-
-  await videoMedia.hover();
-  await expect(videoMedia).toHaveAttribute("data-video-hovered", "true");
+  expect(sizing?.objectFit).toBe("contain");
+  expect(sizing?.widthOverflow ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(1);
+  expect(sizing?.heightOverflow ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(1);
+  expect(
+    Math.min(
+      sizing?.widthDelta ?? Number.POSITIVE_INFINITY,
+      sizing?.heightDelta ?? Number.POSITIVE_INFINITY,
+    ),
+  ).toBeLessThanOrEqual(1);
 
   await secondaryCard.getByTestId("public-thumbnail-media").hover();
+  await page.getByRole("heading", { name: /shopify components/i }).hover();
   await expect(videoMedia).toHaveAttribute("data-video-hovered", "false");
+  await expect(videoCard.locator("video")).toHaveCount(0);
 });
 
 test("pagination is deterministic", async ({ page }) => {
@@ -124,11 +135,15 @@ test("download endpoint returns redirect and applies rate limit", async ({ reque
     return;
   }
 
+  const ipNonce = Math.floor(Date.now() % 200);
+  const successIp = `198.51.${ipNonce}.120`;
+  const rateLimitedIp = `198.51.${ipNonce}.121`;
+
   const successResponse = await request.get(
     `/api/components/${encodeURIComponent(fixtures.firstComponentId)}/download`,
     {
       headers: {
-        "x-forwarded-for": "198.51.100.120",
+        "x-forwarded-for": successIp,
       },
       maxRedirects: 0,
     },
@@ -140,7 +155,7 @@ test("download endpoint returns redirect and applies rate limit", async ({ reque
   for (let attempt = 0; attempt < 20; attempt += 1) {
     await request.get(`/api/components/${encodeURIComponent(fixtures.firstComponentId)}/download`, {
       headers: {
-        "x-forwarded-for": "198.51.100.121",
+        "x-forwarded-for": rateLimitedIp,
       },
       maxRedirects: 0,
     });
@@ -150,7 +165,7 @@ test("download endpoint returns redirect and applies rate limit", async ({ reque
     `/api/components/${encodeURIComponent(fixtures.firstComponentId)}/download`,
     {
       headers: {
-        "x-forwarded-for": "198.51.100.121",
+        "x-forwarded-for": rateLimitedIp,
       },
       maxRedirects: 0,
     },

@@ -53,6 +53,28 @@ test("validateUploadComponentInput accepts valid payload and normalizes text", (
   assert.equal(result.data.liquidExtension, ".liquid");
 });
 
+test("validateUploadComponentInput accepts uploads without a thumbnail", () => {
+  const result = validateUploadComponentInput({
+    title: "  Hero CTA  ",
+    category: "  Promo  ",
+    thumbnailFile: null,
+    liquidFile: makeFile({
+      name: "hero.liquid",
+      type: "text/plain",
+      size: 1024,
+    }),
+  });
+
+  assert.equal(result.ok, true);
+  if (!result.ok) {
+    return;
+  }
+
+  assert.equal(result.data.thumbnailFile, null);
+  assert.equal(result.data.thumbnailMimeType, null);
+  assert.equal(result.data.thumbnailExtension, null);
+});
+
 test("validateUploadComponentInput rejects invalid thumbnail MIME/extension matrix", () => {
   const result = validateUploadComponentInput({
     title: "Card",

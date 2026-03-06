@@ -22,7 +22,7 @@ type StoredComponent = {
   id: string;
   title: string;
   category: string;
-  thumbnail_path: string;
+  thumbnail_path: string | null;
   file_path: string;
   created_at: string;
   updated_at: string;

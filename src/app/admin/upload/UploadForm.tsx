@@ -16,6 +16,7 @@ import {
 import { SandboxWorkspace } from "@/app/components/[id]/sandbox/SandboxWorkspace";
 import {
   KEYBOARD_SPLIT_STEP_PERCENT,
+  LOCAL_MEDIA_PREVIEW_MAX_BYTES,
   MAX_SPLIT_PERCENT,
   MIN_SPLIT_PERCENT,
   PREVIEW_ENQUEUE_DEBOUNCE_MS,
@@ -30,7 +31,9 @@ import { renderLiquidPreview } from "@/lib/liquid/render";
 import { applyLiquidPreviewFallbacks } from "@/lib/liquid/preview-fallbacks";
 import { parseLiquidSchema } from "@/lib/liquid/schema-parse";
 import { buildInitialEditorState, createBlockInstanceFromDefinition, patchLiquidSchemaDefaults } from "@/lib/liquid/schema-patch";
+import { parseUploadDraftSnapshot, UPLOAD_DRAFT_STORAGE_KEY, type UploadDraftSnapshot } from "@/lib/liquid/upload-draft";
 import { buildSettingLookup } from "@/lib/liquid/visibility-hints";
+import { validationLimits } from "@/lib/validation/upload-component";
 import type {
   LiquidEditorState,
   LiquidSchema,
@@ -39,25 +42,21 @@ import type {
   LiquidSettingJsonValue,
 } from "@/lib/liquid/schema-types";
 
-const MAX_RECORDING_FRAME_RATE = 30;
-const THUMBNAIL_MAX_BYTES = 25 * 1024 * 1024;
-const RECORDING_MAX_BYTES = 24 * 1024 * 1024;
-const RECORDING_MAX_DURATION_MS = 30_000;
 const PREVIEW_PLACEHOLDER_TEXT = "Select a .liquid file above to load split-view controls and preview.";
+const LOCAL_MEDIA_PREVIEW_ERROR_PREFIX = "Local preview file";
+const UPLOAD_DRAFT_PERSIST_DEBOUNCE_MS = 400;
+const UPLOAD_DRAFT_PERSIST_IDLE_TIMEOUT_MS = 1_200;
 
-const RECORDING_MIME_CANDIDATES = [
-  "video/mp4;codecs=avc1.42E01E,mp4a.40.2",
-  "video/mp4",
-  "video/webm;codecs=vp9",
-  "video/webm;codecs=vp8",
-  "video/webm",
-] as const;
+type WindowWithIdleCallback = Window & typeof globalThis & {
+  requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number;
+  cancelIdleCallback?: (handle: number) => void;
+};
 
 type UploadedComponent = {
   id: string;
   title: string;
   category: string;
-  thumbnail_path: string;
+  thumbnail_path: string | null;
   file_path: string;
   created_at: string;
   updated_at: string;
@@ -80,47 +79,38 @@ type UploadFormProps = {
   onUploaded?: (component: UploadedComponent) => void;
 };
 
-type ExtendedDisplayMediaStreamOptions = DisplayMediaStreamOptions & {
-  preferCurrentTab?: boolean;
-  selfBrowserSurface?: "include" | "exclude";
-  surfaceSwitching?: "include" | "exclude";
-};
-
-function getPreferredRecordingMimeType(): string | null {
-  if (typeof MediaRecorder === "undefined") {
-    return null;
+function clearPersistedUploadDraft(): void {
+  if (typeof window === "undefined") {
+    return;
   }
 
-  for (const mimeType of RECORDING_MIME_CANDIDATES) {
-    if (MediaRecorder.isTypeSupported(mimeType)) {
-      return mimeType;
+  try {
+    window.localStorage.removeItem(UPLOAD_DRAFT_STORAGE_KEY);
+  } catch {
+    // Ignore browser storage failures and keep the in-memory form usable.
+  }
+}
+
+function persistUploadDraftSnapshot(serializedSnapshot: string | null): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    if (serializedSnapshot === null) {
+      window.localStorage.removeItem(UPLOAD_DRAFT_STORAGE_KEY);
+      return;
     }
-  }
 
-  return null;
+    window.localStorage.setItem(UPLOAD_DRAFT_STORAGE_KEY, serializedSnapshot);
+  } catch {
+    // Ignore storage write failures and keep the upload flow usable.
+  }
 }
 
-function getRecordingExtension(mimeType: string): ".mp4" | ".webm" {
-  if (mimeType.includes("mp4")) {
-    return ".mp4";
-  }
-
-  return ".webm";
-}
-
-function downloadRecordingBlob(blob: Blob, filename: string): void {
-  const objectUrl = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = objectUrl;
-  anchor.download = filename;
-  anchor.rel = "noopener";
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-
-  window.setTimeout(() => {
-    URL.revokeObjectURL(objectUrl);
-  }, 2_000);
+async function prepareThumbnailUploadFileOnDemand(file: File) {
+  const { prepareThumbnailUploadFile } = await import("@/lib/media/thumbnail-video-compression");
+  return prepareThumbnailUploadFile(file);
 }
 
 export function UploadForm({ onUploaded }: UploadFormProps) {
@@ -128,6 +118,12 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [requestId, setRequestId] = useState<string | null>(null);
   const [uploadedComponent, setUploadedComponent] = useState<UploadedComponent | null>(null);
+  const [isPreparingThumbnail, setIsPreparingThumbnail] = useState(false);
+  const [thumbnailStatusMessage, setThumbnailStatusMessage] = useState<string | null>(null);
+  const [titleValue, setTitleValue] = useState("");
+  const [categoryValue, setCategoryValue] = useState("");
+  const [draftStatusMessage, setDraftStatusMessage] = useState<string | null>(null);
+  const [isDraftHydrated, setIsDraftHydrated] = useState(false);
 
   const [localLiquidSource, setLocalLiquidSource] = useState("");
   const [localLiquidFileName, setLocalLiquidFileName] = useState<string | null>(null);
@@ -141,30 +137,25 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
   const [isRenderingPreview, setIsRenderingPreview] = useState(false);
   const [splitPercent, setSplitPercent] = useState(44);
   const [isResizing, setIsResizing] = useState(false);
-  const [isRecordingPreview, setIsRecordingPreview] = useState(false);
-  const [recordingMessage, setRecordingMessage] = useState<string | null>(null);
-  const [recordingError, setRecordingError] = useState<string | null>(null);
 
   const isMountedRef = useRef(true);
+  const submitLockRef = useRef(false);
   const localFileLoadTokenRef = useRef(0);
   const inFlightControllerRef = useRef<AbortController | null>(null);
   const previewRenderControllerRef = useRef<AbortController | null>(null);
   const previewDebounceTimerRef = useRef<number | null>(null);
+  const draftPersistTimerRef = useRef<number | null>(null);
+  const draftPersistIdleCallbackRef = useRef<number | null>(null);
+  const thumbnailInputRef = useRef<HTMLInputElement | null>(null);
   const liquidInputRef = useRef<HTMLInputElement | null>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const displayStreamRef = useRef<MediaStream | null>(null);
-  const recordingChunksRef = useRef<Blob[]>([]);
-  const recordingBytesRef = useRef(0);
-  const recordingStopReasonRef = useRef<"manual" | "max_size" | "max_duration" | null>(null);
-  const recordingStartInFlightRef = useRef(false);
-  const recordingAutoStopTimerRef = useRef<number | null>(null);
   const workspaceRef = useRef<HTMLDivElement | null>(null);
-  const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
   const blockIdCounterRef = useRef(0);
   const activePointerIdRef = useRef<number | null>(null);
   const resizeRafRef = useRef<number | null>(null);
   const resizePendingPercentRef = useRef<number | null>(null);
   const resizeBoundsRef = useRef<{ left: number; width: number } | null>(null);
+  const pendingDraftSnapshotRef = useRef<UploadDraftSnapshot | null>(null);
+  const lastPersistedDraftSnapshotRef = useRef<string | null>(null);
   const liveSplitPercentRef = useRef(splitPercent);
   const mediaOverridesRef = useRef<Record<string, string>>(mediaOverrides);
   const mediaSelectionVersionByPathRef = useRef<Map<string, number>>(new Map());
@@ -245,28 +236,6 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
     return (blockCountByType.get(definition.type) ?? 0) < definition.limit;
   }, [blockCountByType, blockDefinitionByType, pendingBlockType, schema]);
 
-  function clearRecordingAutoStopTimer() {
-    if (recordingAutoStopTimerRef.current === null) {
-      return;
-    }
-
-    window.clearTimeout(recordingAutoStopTimerRef.current);
-    recordingAutoStopTimerRef.current = null;
-  }
-
-  function stopDisplayStreamTracks() {
-    const displayStream = displayStreamRef.current;
-    if (!displayStream) {
-      return;
-    }
-
-    for (const track of displayStream.getTracks()) {
-      track.stop();
-    }
-
-    displayStreamRef.current = null;
-  }
-
   function clearPreviewDebounceTimer() {
     if (previewDebounceTimerRef.current === null) {
       return;
@@ -276,6 +245,79 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
     previewDebounceTimerRef.current = null;
   }
 
+  const clearDraftPersistTimer = useCallback(() => {
+    if (draftPersistTimerRef.current === null) {
+      return;
+    }
+
+    window.clearTimeout(draftPersistTimerRef.current);
+    draftPersistTimerRef.current = null;
+  }, []);
+
+  const clearDraftPersistIdleCallback = useCallback(() => {
+    if (typeof window === "undefined" || draftPersistIdleCallbackRef.current === null) {
+      return;
+    }
+
+    const browserWindow = window as WindowWithIdleCallback;
+    if (typeof browserWindow.cancelIdleCallback === "function") {
+      browserWindow.cancelIdleCallback(draftPersistIdleCallbackRef.current);
+    } else {
+      window.clearTimeout(draftPersistIdleCallbackRef.current);
+    }
+
+    draftPersistIdleCallbackRef.current = null;
+  }, []);
+
+  const flushPendingUploadDraft = useCallback(() => {
+    clearDraftPersistTimer();
+    clearDraftPersistIdleCallback();
+
+    let serializedSnapshot: string | null = null;
+    try {
+      serializedSnapshot = pendingDraftSnapshotRef.current
+        ? JSON.stringify(pendingDraftSnapshotRef.current)
+        : null;
+    } catch {
+      return;
+    }
+
+    if (serializedSnapshot === lastPersistedDraftSnapshotRef.current) {
+      return;
+    }
+
+    persistUploadDraftSnapshot(serializedSnapshot);
+    lastPersistedDraftSnapshotRef.current = serializedSnapshot;
+  }, [clearDraftPersistIdleCallback, clearDraftPersistTimer]);
+
+  const schedulePendingUploadDraftPersist = useCallback(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    clearDraftPersistTimer();
+    clearDraftPersistIdleCallback();
+
+    draftPersistTimerRef.current = window.setTimeout(() => {
+      draftPersistTimerRef.current = null;
+
+      const runPersist = () => {
+        draftPersistIdleCallbackRef.current = null;
+        flushPendingUploadDraft();
+      };
+
+      const browserWindow = window as WindowWithIdleCallback;
+      if (typeof browserWindow.requestIdleCallback === "function") {
+        draftPersistIdleCallbackRef.current = browserWindow.requestIdleCallback(runPersist, {
+          timeout: UPLOAD_DRAFT_PERSIST_IDLE_TIMEOUT_MS,
+        });
+        return;
+      }
+
+      draftPersistIdleCallbackRef.current = window.setTimeout(runPersist, 0);
+    }, UPLOAD_DRAFT_PERSIST_DEBOUNCE_MS);
+  }, [clearDraftPersistIdleCallback, clearDraftPersistTimer, flushPendingUploadDraft]);
+
   function revokeMediaOverrideUrls(overrides: Record<string, string>) {
     for (const value of Object.values(overrides)) {
       if (value.startsWith("blob:")) {
@@ -284,16 +326,7 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
     }
   }
 
-  function postPreviewScaleLock(lock: boolean) {
-    const previewWindow = previewIframeRef.current?.contentWindow;
-    if (!previewWindow) {
-      return;
-    }
-
-    previewWindow.postMessage({ type: lock ? "pressplay:lock-scale" : "pressplay:unlock-scale" }, "*");
-  }
-
-  function resetPreviewAndRecordingState() {
+  function resetPreviewState() {
     localFileLoadTokenRef.current += 1;
     setLocalLiquidSource("");
     setLocalLiquidFileName(null);
@@ -307,9 +340,6 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
     setIsRenderingPreview(false);
     setSplitPercent(44);
     setIsResizing(false);
-    setIsRecordingPreview(false);
-    setRecordingMessage(null);
-    setRecordingError(null);
 
     clearPreviewDebounceTimer();
     previewRenderControllerRef.current?.abort();
@@ -322,22 +352,6 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
     revokeMediaOverrideUrls(mediaOverridesRef.current);
     mediaOverridesRef.current = {};
     mediaSelectionVersionByPathRef.current.clear();
-
-    const recorder = mediaRecorderRef.current;
-    mediaRecorderRef.current = null;
-    recordingChunksRef.current = [];
-    recordingBytesRef.current = 0;
-    recordingStopReasonRef.current = null;
-    recordingStartInFlightRef.current = false;
-
-    clearRecordingAutoStopTimer();
-
-    if (recorder && recorder.state === "recording") {
-      recorder.stop();
-    }
-
-    stopDisplayStreamTracks();
-    postPreviewScaleLock(false);
   }
 
   useEffect(() => {
@@ -349,29 +363,131 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
       inFlightControllerRef.current?.abort();
       inFlightControllerRef.current = null;
 
+      flushPendingUploadDraft();
       clearPreviewDebounceTimer();
       previewRenderControllerRef.current?.abort();
       previewRenderControllerRef.current = null;
-
-      const recorder = mediaRecorderRef.current;
-      mediaRecorderRef.current = null;
-      if (recorder && recorder.state === "recording") {
-        recorder.stop();
-      }
-
-      recordingChunksRef.current = [];
-      recordingBytesRef.current = 0;
-      recordingStopReasonRef.current = null;
-      recordingStartInFlightRef.current = false;
-      clearRecordingAutoStopTimer();
-      stopDisplayStreamTracks();
-      postPreviewScaleLock(false);
 
       revokeMediaOverrideUrls(mediaOverridesRef.current);
       mediaOverridesRef.current = {};
       mediaSelectionVersionByPath.clear();
     };
+  }, [flushPendingUploadDraft]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      setIsDraftHydrated(true);
+      return;
+    }
+
+    try {
+      const rawDraft = window.localStorage.getItem(UPLOAD_DRAFT_STORAGE_KEY);
+      if (!rawDraft) {
+        setIsDraftHydrated(true);
+        return;
+      }
+
+      const parsedDraft = parseUploadDraftSnapshot(
+        JSON.parse(rawDraft) as UploadDraftSnapshot | null,
+      );
+
+      if (!parsedDraft) {
+        clearPersistedUploadDraft();
+        setIsDraftHydrated(true);
+        return;
+      }
+
+      lastPersistedDraftSnapshotRef.current = rawDraft;
+
+      setTitleValue(parsedDraft.title);
+      setCategoryValue(parsedDraft.category);
+
+      if (parsedDraft.localLiquidSource.trim().length > 0) {
+        const parsedResult = parseLiquidSchema(parsedDraft.localLiquidSource);
+        const restoredState = parsedResult.schema
+          ? (parsedDraft.editorState ?? buildInitialEditorState(parsedResult.schema))
+          : null;
+        const primaryDiagnostic = parsedResult.diagnostics.find((diagnostic) => diagnostic.level === "error")
+          ?? parsedResult.diagnostics[0];
+        const hasPendingBlockType = parsedDraft.pendingBlockType.trim().length > 0
+          && (parsedResult.schema?.blocks ?? []).some((block) => block.type === parsedDraft.pendingBlockType);
+
+        setLocalLiquidSource(parsedDraft.localLiquidSource);
+        setLocalLiquidFileName(parsedDraft.localLiquidFileName);
+        setSchema(parsedResult.schema);
+        setDiagnostics(parsedResult.diagnostics);
+        setEditorState(restoredState);
+        setPendingBlockType(hasPendingBlockType ? parsedDraft.pendingBlockType : (parsedResult.schema?.blocks[0]?.type ?? ""));
+        blockIdCounterRef.current = restoredState?.blocks.length ?? 0;
+        setSplitPercent(clampSplitPercent(parsedDraft.splitPercent));
+        setPreviewHtml("");
+        setPreviewError(parsedResult.schema ? null : (primaryDiagnostic?.message ?? "Liquid schema parsing failed."));
+        setDraftStatusMessage("Restored your last upload preview draft. Re-select the thumbnail file before uploading.");
+      }
+    } catch {
+      clearPersistedUploadDraft();
+    } finally {
+      setIsDraftHydrated(true);
+    }
   }, []);
+
+  useEffect(() => {
+    if (!isDraftHydrated || typeof window === "undefined") {
+      return;
+    }
+
+    const hasDraftContent = titleValue.trim().length > 0
+      || categoryValue.trim().length > 0
+      || localLiquidSource.trim().length > 0
+      || localLiquidFileName !== null
+      || editorState !== null;
+
+    pendingDraftSnapshotRef.current = hasDraftContent
+      ? {
+        version: 1,
+        title: titleValue,
+        category: categoryValue,
+        localLiquidSource,
+        localLiquidFileName,
+        editorState,
+        pendingBlockType,
+        splitPercent,
+      }
+      : null;
+
+    schedulePendingUploadDraftPersist();
+    return () => {
+      clearDraftPersistTimer();
+      clearDraftPersistIdleCallback();
+    };
+  }, [
+    categoryValue,
+    clearDraftPersistIdleCallback,
+    clearDraftPersistTimer,
+    editorState,
+    isDraftHydrated,
+    localLiquidFileName,
+    localLiquidSource,
+    pendingBlockType,
+    schedulePendingUploadDraftPersist,
+    splitPercent,
+    titleValue,
+  ]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const handlePageHide = () => {
+      flushPendingUploadDraft();
+    };
+
+    window.addEventListener("pagehide", handlePageHide);
+    return () => {
+      window.removeEventListener("pagehide", handlePageHide);
+    };
+  }, [flushPendingUploadDraft]);
 
   const updateMediaOverride = useCallback((pathKey: string, nextValue: string | null) => {
     setMediaOverrides((current) => {
@@ -399,11 +515,28 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
 
   const handleSelectLocalMedia = useCallback(
     (pathKey: string, file: File | null) => {
+      const clearLocalMediaPreviewError = () => {
+        setPreviewError((current) =>
+          current?.startsWith(LOCAL_MEDIA_PREVIEW_ERROR_PREFIX) ? null : current,
+        );
+      };
+
       const versionMap = mediaSelectionVersionByPathRef.current;
       const nextVersion = (versionMap.get(pathKey) ?? 0) + 1;
       versionMap.set(pathKey, nextVersion);
 
       if (!file) {
+        clearLocalMediaPreviewError();
+        updateMediaOverride(pathKey, null);
+        return;
+      }
+
+      if (file.size > LOCAL_MEDIA_PREVIEW_MAX_BYTES) {
+        const selectedSizeMb = Math.ceil(file.size / 1024 / 1024);
+        const maxSizeMb = Math.floor(LOCAL_MEDIA_PREVIEW_MAX_BYTES / 1024 / 1024);
+        setPreviewError(
+          `Local preview file is ${selectedSizeMb}MB. Choose a file under ${maxSizeMb}MB.`,
+        );
         updateMediaOverride(pathKey, null);
         return;
       }
@@ -414,13 +547,19 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
             return;
           }
 
+          clearLocalMediaPreviewError();
           updateMediaOverride(pathKey, dataUrl);
         })
-        .catch(() => {
+        .catch((error) => {
           if (versionMap.get(pathKey) !== nextVersion) {
             return;
           }
 
+          setPreviewError(
+            error instanceof Error
+              ? error.message
+              : "Local preview file could not be loaded.",
+          );
           updateMediaOverride(pathKey, null);
         });
     },
@@ -724,6 +863,7 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
   async function loadLiquidFileForPreview(file: File | null) {
     const token = localFileLoadTokenRef.current + 1;
     localFileLoadTokenRef.current = token;
+    setDraftStatusMessage(null);
 
     if (!file) {
       revokeMediaOverrideUrls(mediaOverridesRef.current);
@@ -763,8 +903,6 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
       blockIdCounterRef.current = initialState?.blocks.length ?? 0;
       setPreviewHtml("");
       setPreviewError(parsedResult.schema ? null : (primaryDiagnostic?.message ?? "Liquid schema parsing failed."));
-      setRecordingMessage(null);
-      setRecordingError(null);
     } catch {
       if (!isMountedRef.current || localFileLoadTokenRef.current !== token) {
         return;
@@ -858,323 +996,143 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
     liveSplitPercentRef.current = splitPercent;
   }, [splitPercent]);
 
-  async function handleStartRecordingPreview() {
-    if (isRecordingPreview || recordingStartInFlightRef.current) {
-      return;
-    }
-
-    recordingStartInFlightRef.current = true;
-
-    if (!previewHtml.trim()) {
-      setRecordingError("Load a valid Liquid file and wait for preview before starting a recording.");
-      recordingStartInFlightRef.current = false;
-      return;
-    }
-
-    if (
-      typeof window === "undefined"
-      || typeof MediaRecorder === "undefined"
-      || !navigator.mediaDevices
-      || !navigator.mediaDevices.getDisplayMedia
-    ) {
-      setRecordingError("This browser does not support preview recording.");
-      recordingStartInFlightRef.current = false;
-      return;
-    }
-
-    setRecordingError(null);
-    setRecordingMessage("Choose this browser tab/window. Stop recording to download the clip.");
-    postPreviewScaleLock(true);
-
-    const preferredMimeType = getPreferredRecordingMimeType();
-
-    try {
-      const displayOptions: ExtendedDisplayMediaStreamOptions = {
-        video: {
-          frameRate: {
-            ideal: MAX_RECORDING_FRAME_RATE,
-            max: MAX_RECORDING_FRAME_RATE,
-          },
-        },
-        audio: false,
-        // These are hints only; browsers may ignore.
-        preferCurrentTab: true,
-        selfBrowserSurface: "include",
-        surfaceSwitching: "include",
-      };
-
-      const displayStream = await navigator.mediaDevices.getDisplayMedia(displayOptions);
-
-      if (!isMountedRef.current) {
-        for (const track of displayStream.getTracks()) {
-          track.stop();
-        }
-        recordingStartInFlightRef.current = false;
-        return;
-      }
-
-      stopDisplayStreamTracks();
-      displayStreamRef.current = displayStream;
-      recordingChunksRef.current = [];
-      recordingBytesRef.current = 0;
-      recordingStopReasonRef.current = null;
-
-      const recorderOptions: MediaRecorderOptions = preferredMimeType
-        ? { mimeType: preferredMimeType }
-        : {};
-
-      const mediaRecorder = new MediaRecorder(displayStream, recorderOptions);
-      mediaRecorderRef.current = mediaRecorder;
-
-      for (const track of displayStream.getVideoTracks()) {
-        track.addEventListener(
-          "ended",
-          () => {
-            if (mediaRecorder.state === "recording") {
-              mediaRecorder.stop();
-            }
-          },
-          { once: true },
-        );
-      }
-
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          recordingChunksRef.current.push(event.data);
-          recordingBytesRef.current += event.data.size;
-
-          if (recordingBytesRef.current > RECORDING_MAX_BYTES && mediaRecorder.state === "recording") {
-            recordingStopReasonRef.current = "max_size";
-            mediaRecorder.stop();
-          }
-        }
-      };
-
-      mediaRecorder.onerror = () => {
-        if (!isMountedRef.current) {
-          return;
-        }
-
-        recordingStartInFlightRef.current = false;
-        clearRecordingAutoStopTimer();
-        setIsRecordingPreview(false);
-        setRecordingMessage(null);
-        setRecordingError("Recording failed. Please try again.");
-        mediaRecorderRef.current = null;
-        recordingChunksRef.current = [];
-        recordingBytesRef.current = 0;
-        recordingStopReasonRef.current = null;
-        stopDisplayStreamTracks();
-        postPreviewScaleLock(false);
-      };
-
-      mediaRecorder.onstop = () => {
-        const stopReason = recordingStopReasonRef.current;
-        recordingStopReasonRef.current = null;
-        const chunks = recordingChunksRef.current;
-        recordingChunksRef.current = [];
-        recordingBytesRef.current = 0;
-        recordingStartInFlightRef.current = false;
-        clearRecordingAutoStopTimer();
-
-        const mimeType = mediaRecorder.mimeType || preferredMimeType || "video/webm";
-
-        mediaRecorderRef.current = null;
-        stopDisplayStreamTracks();
-        postPreviewScaleLock(false);
-
-        if (!isMountedRef.current) {
-          return;
-        }
-
-        setIsRecordingPreview(false);
-
-        if (chunks.length === 0) {
-          setRecordingMessage(null);
-          setRecordingError("No video data was captured.");
-          return;
-        }
-
-        const recordingBlob = new Blob(chunks, { type: mimeType });
-        const normalizedMimeType = recordingBlob.type || mimeType;
-        const extension = getRecordingExtension(normalizedMimeType);
-        const baseName = localLiquidFileName
-          ? localLiquidFileName.replace(/\.liquid$/i, "")
-          : "liquid-preview";
-        const recordingFileName = `${baseName}-thumbnail${extension}`;
-
-        downloadRecordingBlob(recordingBlob, recordingFileName);
-
-        setRecordingError(null);
-        const sizeLabel = `${Math.ceil(recordingBlob.size / 1024)} KB`;
-        const sizeMb = Math.ceil(recordingBlob.size / 1024 / 1024);
-
-        if (recordingBlob.size > THUMBNAIL_MAX_BYTES) {
-          setRecordingMessage(null);
-          setRecordingError(
-            `Recording downloaded (${sizeMb} MB) but exceeds the 25MB upload limit. Crop/trim it, then upload manually as thumbnail.`,
-          );
-          return;
-        }
-
-        if (stopReason === "max_duration") {
-          setRecordingMessage(
-            `Recording downloaded (auto-stopped at ${Math.round(RECORDING_MAX_DURATION_MS / 1000)}s): ${recordingFileName} (${sizeLabel}).`,
-          );
-          return;
-        }
-
-        if (stopReason === "max_size") {
-          setRecordingMessage(
-            `Recording downloaded (auto-stopped near size limit): ${recordingFileName} (${sizeLabel}).`,
-          );
-          return;
-        }
-
-        setRecordingMessage(`Recording downloaded: ${recordingFileName} (${sizeLabel}). Upload it manually as thumbnail.`);
-      };
-
-      mediaRecorder.start(250);
-      recordingAutoStopTimerRef.current = window.setTimeout(() => {
-        const activeRecorder = mediaRecorderRef.current;
-        if (!activeRecorder || activeRecorder !== mediaRecorder || activeRecorder.state !== "recording") {
-          return;
-        }
-
-        recordingStopReasonRef.current = "max_duration";
-        activeRecorder.stop();
-      }, RECORDING_MAX_DURATION_MS);
-      setIsRecordingPreview(true);
-      setRecordingMessage("Recording in progress. Click Stop Recording to download.");
-      recordingStartInFlightRef.current = false;
-    } catch (error) {
-      recordingStartInFlightRef.current = false;
-      clearRecordingAutoStopTimer();
-      mediaRecorderRef.current = null;
-      recordingChunksRef.current = [];
-      recordingBytesRef.current = 0;
-      recordingStopReasonRef.current = null;
-      stopDisplayStreamTracks();
-      postPreviewScaleLock(false);
-
-      if (!isMountedRef.current) {
-        return;
-      }
-
-      if (error instanceof DOMException && error.name === "NotAllowedError") {
-        setRecordingError("Screen recording permission was denied.");
-      } else {
-        setRecordingError("Unable to start recording.");
-      }
-
-      setRecordingMessage(null);
-    }
-  }
-
-  function handleStopRecordingPreview() {
-    const mediaRecorder = mediaRecorderRef.current;
-    if (!mediaRecorder) {
-      return;
-    }
-
-    if (mediaRecorder.state === "recording") {
-      recordingStopReasonRef.current = "manual";
-      mediaRecorder.stop();
-      return;
-    }
-
-    setIsRecordingPreview(false);
-    postPreviewScaleLock(false);
-  }
-
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (isSubmitting || inFlightControllerRef.current) {
+    if (submitLockRef.current || isSubmitting || isPreparingThumbnail || inFlightControllerRef.current) {
       return;
     }
-
-    if (isRecordingPreview) {
-      setErrorMessage("Stop preview recording before uploading.");
-      return;
-    }
-
-    const controller = new AbortController();
-    inFlightControllerRef.current = controller;
-
-    setIsSubmitting(true);
-    setErrorMessage(null);
-    setRequestId(null);
-    setUploadedComponent(null);
-
-    const form = event.currentTarget;
-    const formData = new FormData(form);
-
-    const selectedLiquidFile = liquidInputRef.current?.files?.[0] ?? null;
-    if (selectedLiquidFile && localLiquidSource.trim().length > 0) {
-      const sourceForUpload = schema && editorState
-        ? patchLiquidSchemaDefaults(localLiquidSource, schema, editorState)
-        : localLiquidSource;
-
-      const editedLiquidFile = new File([sourceForUpload], selectedLiquidFile.name, {
-        type: selectedLiquidFile.type || "text/plain",
-        lastModified: Date.now(),
-      });
-      formData.set("liquidFile", editedLiquidFile);
-    }
+    submitLockRef.current = true;
 
     try {
-      const response = await fetch("/api/admin/components", {
-        method: "POST",
-        headers: {
-          "x-admin-csrf": "1",
-        },
-        body: formData,
-        signal: controller.signal,
-      });
+      setErrorMessage(null);
+      setRequestId(null);
+      setUploadedComponent(null);
+      setThumbnailStatusMessage(null);
 
-      const body = (await response
-        .json()
-        .catch(() => null)) as UploadSuccessResponse | UploadErrorResponse | null;
+      const form = event.currentTarget;
+      const formData = new FormData(form);
+      const selectedThumbnailFile = thumbnailInputRef.current?.files?.[0] ?? null;
+      let thumbnailFileForUpload = selectedThumbnailFile;
 
-      if (!isMountedRef.current) {
-        return;
+      if (selectedThumbnailFile) {
+        setIsPreparingThumbnail(true);
+        try {
+          const preparedThumbnail = await prepareThumbnailUploadFileOnDemand(selectedThumbnailFile);
+          thumbnailFileForUpload = preparedThumbnail.file;
+          setThumbnailStatusMessage(preparedThumbnail.message);
+        } catch (error) {
+          if (selectedThumbnailFile.size > validationLimits.THUMBNAIL_MAX_BYTES) {
+            setErrorMessage(
+              error instanceof Error
+                ? `${error.message} Choose a smaller video thumbnail or use a browser with MediaRecorder support.`
+                : "Video thumbnail compression failed. Choose a smaller video thumbnail.",
+            );
+            return;
+          }
+
+          setThumbnailStatusMessage(
+            "Video compression failed, so the original thumbnail will be uploaded.",
+          );
+        } finally {
+          if (isMountedRef.current) {
+            setIsPreparingThumbnail(false);
+          }
+        }
       }
 
-      if (!response.ok) {
-        const errorBody = body as UploadErrorResponse | null;
-        setErrorMessage(errorBody?.error?.message ?? "Upload failed.");
-        setRequestId(errorBody?.error?.requestId ?? null);
-        return;
+      if (!thumbnailFileForUpload) {
+        formData.delete("thumbnail");
+      } else {
+        if (thumbnailFileForUpload.size > validationLimits.THUMBNAIL_MAX_BYTES) {
+          setErrorMessage("Thumbnail still exceeds the 25MB upload limit after compression.");
+          return;
+        }
+
+        formData.set("thumbnail", thumbnailFileForUpload);
       }
 
-      if (!body || !("component" in body)) {
-        setErrorMessage("Upload completed but response was malformed.");
-        return;
+      const selectedLiquidFile = liquidInputRef.current?.files?.[0] ?? null;
+      if (localLiquidSource.trim().length > 0) {
+        const sourceForUpload = schema && editorState
+          ? patchLiquidSchemaDefaults(localLiquidSource, schema, editorState)
+          : localLiquidSource;
+
+        const editedLiquidFile = new File([sourceForUpload], selectedLiquidFile?.name ?? localLiquidFileName ?? "component.liquid", {
+          type: selectedLiquidFile?.type || "text/plain",
+          lastModified: Date.now(),
+        });
+        formData.set("liquidFile", editedLiquidFile);
       }
 
-      setUploadedComponent(body.component);
-      setRequestId(body.requestId);
-      onUploaded?.(body.component);
-      form.reset();
-      resetPreviewAndRecordingState();
-    } catch (error) {
-      if (!isMountedRef.current) {
-        return;
-      }
+      const controller = new AbortController();
+      inFlightControllerRef.current = controller;
+      setIsSubmitting(true);
 
-      if (error instanceof DOMException && error.name === "AbortError") {
-        return;
-      }
+      try {
+        const response = await fetch("/api/admin/components", {
+          method: "POST",
+          headers: {
+            "x-admin-csrf": "1",
+          },
+          body: formData,
+          signal: controller.signal,
+        });
 
-      setErrorMessage("Upload request failed before completion.");
+        const body = (await response
+          .json()
+          .catch(() => null)) as UploadSuccessResponse | UploadErrorResponse | null;
+
+        if (!isMountedRef.current) {
+          return;
+        }
+
+        if (!response.ok) {
+          const errorBody = body as UploadErrorResponse | null;
+          setErrorMessage(errorBody?.error?.message ?? "Upload failed.");
+          setRequestId(errorBody?.error?.requestId ?? null);
+          return;
+        }
+
+        if (!body || !("component" in body)) {
+          setErrorMessage("Upload completed but response was malformed.");
+          return;
+        }
+
+        setUploadedComponent(body.component);
+        setRequestId(body.requestId);
+        onUploaded?.(body.component);
+        form.reset();
+        setTitleValue("");
+        setCategoryValue("");
+        setDraftStatusMessage(null);
+        setThumbnailStatusMessage(null);
+        resetPreviewState();
+        pendingDraftSnapshotRef.current = null;
+        clearDraftPersistTimer();
+        clearDraftPersistIdleCallback();
+        lastPersistedDraftSnapshotRef.current = null;
+        clearPersistedUploadDraft();
+      } catch (error) {
+        if (!isMountedRef.current) {
+          return;
+        }
+
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
+
+        setErrorMessage("Upload request failed before completion.");
+      } finally {
+        if (inFlightControllerRef.current === controller) {
+          inFlightControllerRef.current = null;
+        }
+
+        if (isMountedRef.current) {
+          setIsSubmitting(false);
+        }
+      }
     } finally {
-      if (inFlightControllerRef.current === controller) {
-        inFlightControllerRef.current = null;
-      }
-
-      if (isMountedRef.current) {
-        setIsSubmitting(false);
-      }
+      submitLockRef.current = false;
     }
   }
 
@@ -1192,6 +1150,8 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
             required
             maxLength={120}
             autoComplete="off"
+            value={titleValue}
+            onChange={(event) => setTitleValue(event.currentTarget.value)}
             className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 transition-colors focus-visible:border-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 focus-visible:ring-offset-2"
           />
         </div>
@@ -1206,6 +1166,8 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
             required
             maxLength={48}
             autoComplete="off"
+            value={categoryValue}
+            onChange={(event) => setCategoryValue(event.currentTarget.value)}
             className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 transition-colors focus-visible:border-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 focus-visible:ring-offset-2"
           />
         </div>
@@ -1213,16 +1175,32 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
 
       <div>
         <label htmlFor="thumbnail" className="block text-sm font-medium text-zinc-800">
-          Thumbnail (image or video)
+          Thumbnail (image or video, optional)
         </label>
         <input
+          ref={thumbnailInputRef}
           id="thumbnail"
           name="thumbnail"
           type="file"
-          required
           accept="image/png,image/jpeg,image/webp,image/gif,image/avif,video/mp4,video/webm"
+          onChange={() => setThumbnailStatusMessage(null)}
           className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-800 file:mr-4 file:rounded-md file:border-0 file:bg-zinc-100 file:px-3 file:py-2 file:text-sm file:font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 focus-visible:ring-offset-2"
         />
+        <p className="mt-1 text-xs text-zinc-500">
+          You can skip this for now and add or replace the thumbnail later from Manage Components.
+        </p>
+        <p className="mt-1 text-xs text-zinc-500">
+          Video thumbnails are auto-compressed to a small gallery-card format that preserves the full frame.
+        </p>
+        {thumbnailStatusMessage ? (
+          <div
+            role="status"
+            aria-live="polite"
+            className="mt-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800"
+          >
+            {thumbnailStatusMessage}
+          </div>
+        ) : null}
       </div>
 
       <div>
@@ -1234,25 +1212,34 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
           id="liquidFile"
           name="liquidFile"
           type="file"
-          required
+          required={!localLiquidSource}
           accept=".liquid,text/plain,text/x-liquid,application/octet-stream"
           onChange={handleLiquidFileChange}
           className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-800 file:mr-4 file:rounded-md file:border-0 file:bg-zinc-100 file:px-3 file:py-2 file:text-sm file:font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 focus-visible:ring-offset-2"
         />
+        {localLiquidSource ? (
+          <p className="mt-1 text-xs text-zinc-500">
+            Current draft source is loaded. Re-selecting the file is optional unless you want to replace it.
+          </p>
+        ) : null}
       </div>
 
       <section className="rounded-lg border border-zinc-200 bg-zinc-50 p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold tracking-tight text-zinc-900">
-            Split-View Liquid Editor + Recording
+            Split-View Liquid Editor
           </h2>
           <span className="rounded-full border border-zinc-300 px-2 py-0.5 text-xs font-medium text-zinc-600">
             Optional
           </span>
         </div>
         <p className="mt-2 text-xs text-zinc-600">
-          Reuses the same schema settings + block controls as sandbox. Configure the component visually, then record a
-          short clip and download it. Crop/edit as needed, then upload it manually as thumbnail.
+          Reuses the same schema settings + block controls as sandbox. Configure the component visually here so the
+          saved Liquid file includes the right defaults and block count.
+        </p>
+        <p className="mt-2 text-xs text-zinc-500">
+          Upload draft settings are saved in this browser. Thumbnail and local preview files still need re-selection
+          after a refresh.
         </p>
 
         {localLiquidFileName ? (
@@ -1261,29 +1248,20 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
           </p>
         ) : null}
 
+        {draftStatusMessage ? (
+          <div
+            role="status"
+            aria-live="polite"
+            className="mt-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800"
+          >
+            {draftStatusMessage}
+          </div>
+        ) : null}
+
         <div className="mt-3 flex flex-wrap gap-2">
           <span className="inline-flex items-center rounded-full border border-zinc-300 bg-white px-2.5 py-1 text-xs text-zinc-600">
             {isRenderingPreview ? "Preview rendering…" : "Preview ready"}
           </span>
-
-          {isRecordingPreview ? (
-            <button
-              type="button"
-              onClick={handleStopRecordingPreview}
-              className="touch-manipulation rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs font-medium text-red-700 transition-transform duration-150 motion-reduce:transition-none motion-safe:hover:will-change-transform motion-safe:hover:transform-gpu motion-safe:hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300 focus-visible:ring-offset-2"
-            >
-              Stop Recording
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => void handleStartRecordingPreview()}
-              disabled={isRenderingPreview || previewHtml.trim().length === 0 || !schema || !editorState}
-              className="touch-manipulation rounded-lg border border-zinc-900 bg-zinc-900 px-3 py-2 text-xs font-medium text-white transition-transform duration-150 motion-reduce:transition-none motion-safe:hover:will-change-transform motion-safe:hover:transform-gpu motion-safe:hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              Start Recording
-            </button>
-          )}
         </div>
 
         {previewError && (!schema || !editorState) ? (
@@ -1293,26 +1271,6 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
             className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800"
           >
             {previewError}
-          </div>
-        ) : null}
-
-        {recordingError ? (
-          <div
-            role="status"
-            aria-live="polite"
-            className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700"
-          >
-            {recordingError}
-          </div>
-        ) : null}
-
-        {recordingMessage ? (
-          <div
-            role="status"
-            aria-live="polite"
-            className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800"
-          >
-            {recordingMessage}
           </div>
         ) : null}
 
@@ -1332,7 +1290,6 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
           <div className="mt-3 h-[62rem] min-h-[36rem]">
             <SandboxWorkspace
               workspaceRef={workspaceRef}
-              previewIframeRef={previewIframeRef}
               workspaceStyle={workspaceStyle}
               splitPercent={splitPercent}
               isResizing={isResizing}
@@ -1383,6 +1340,11 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
           className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800"
         >
           <p className="font-medium">Upload succeeded: {uploadedComponent.title}</p>
+          {uploadedComponent.thumbnail_path ? null : (
+            <p className="mt-1 text-xs">
+              No thumbnail attached yet. You can add one below in Manage Components.
+            </p>
+          )}
           <p className="mt-1 text-xs">
             id: <code>{uploadedComponent.id}</code>
           </p>
@@ -1394,10 +1356,10 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
 
       <button
         type="submit"
-        disabled={isSubmitting || isRecordingPreview}
+        disabled={isSubmitting || isPreparingThumbnail}
         className="touch-manipulation rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-transform duration-150 motion-reduce:transition-none motion-safe:hover:will-change-transform motion-safe:hover:transform-gpu motion-safe:hover:-translate-y-0.5 motion-safe:active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {isSubmitting ? "Uploading…" : "Upload Component"}
+        {isPreparingThumbnail ? "Compressing Thumbnail…" : isSubmitting ? "Uploading…" : "Upload Component"}
       </button>
     </form>
   );

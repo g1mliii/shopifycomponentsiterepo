@@ -1,12 +1,12 @@
-export type PublicComponentMediaKind = "image" | "video";
+export type PublicComponentMediaKind = "image" | "video" | "missing";
 
 export interface PublicComponentCard {
   id: string;
   title: string;
   category: string;
-  thumbnail_path: string;
+  thumbnail_path: string | null;
   created_at: string;
-  thumbnail_url: string;
+  thumbnail_url: string | null;
   media_kind: PublicComponentMediaKind;
 }
 

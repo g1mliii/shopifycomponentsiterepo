@@ -4,6 +4,7 @@ export const MIN_SPLIT_PERCENT = 18;
 export const MAX_SPLIT_PERCENT = 82;
 export const KEYBOARD_SPLIT_STEP_PERCENT = 4;
 export const PREVIEW_ENQUEUE_DEBOUNCE_MS = 80;
+export const LOCAL_MEDIA_PREVIEW_MAX_BYTES = 8 * 1024 * 1024;
 
 export function toTitleSlug(value: string): string {
   const normalized = value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
@@ -54,36 +55,47 @@ export function buildPreviewDocument(html: string): string {
         }
 
         var rafId = 0;
-        var isScaleLocked = false;
+        var deferredFitTimerId = 0;
+        var resizeObserver = null;
+        var mutationObserver = null;
+        var lastViewportWidth = 0;
+        var lastContentWidth = 0;
+        var lastContentHeight = 0;
+        var lastScale = 0;
 
         function applyFitScale() {
-          if (isScaleLocked) {
-            return;
-          }
-
           rafId = 0;
-
           root.style.transform = "scale(1)";
           root.style.width = "auto";
 
           var viewportWidth = Math.max(320, window.innerWidth - 24);
           var contentWidth = Math.max(1, root.scrollWidth);
+          var contentHeight = Math.max(1, root.scrollHeight);
           var widthScale = viewportWidth / contentWidth;
           var scale = Math.min(1, widthScale);
+
+          if (
+            viewportWidth === lastViewportWidth
+            && contentWidth === lastContentWidth
+            && contentHeight === lastContentHeight
+            && scale === lastScale
+          ) {
+            return;
+          }
+
+          lastViewportWidth = viewportWidth;
+          lastContentWidth = contentWidth;
+          lastContentHeight = contentHeight;
+          lastScale = scale;
 
           root.style.width = contentWidth + "px";
           root.style.transform = "scale(" + scale + ")";
           root.style.margin = "0 auto";
-
-          var scaledHeight = Math.ceil(root.scrollHeight * scale);
+          var scaledHeight = Math.ceil(contentHeight * scale);
           document.body.style.minHeight = scaledHeight + 24 + "px";
         }
 
         function queueFitScale() {
-          if (isScaleLocked) {
-            return;
-          }
-
           if (rafId !== 0) {
             return;
           }
@@ -91,23 +103,32 @@ export function buildPreviewDocument(html: string): string {
           rafId = window.requestAnimationFrame(applyFitScale);
         }
 
-        window.addEventListener("resize", queueFitScale, { passive: true });
-        window.addEventListener("message", function (event) {
-          var data = event ? event.data : null;
-          if (!data || typeof data !== "object") {
-            return;
+        function queueDeferredFitScale() {
+          if (deferredFitTimerId !== 0) {
+            window.clearTimeout(deferredFitTimerId);
           }
 
-          if (data.type === "pressplay:lock-scale") {
-            isScaleLocked = true;
-            return;
-          }
-
-          if (data.type === "pressplay:unlock-scale") {
-            isScaleLocked = false;
+          deferredFitTimerId = window.setTimeout(function () {
+            deferredFitTimerId = 0;
             queueFitScale();
-          }
-        });
+          }, 48);
+        }
+
+        window.addEventListener("resize", queueFitScale, { passive: true });
+
+        if (typeof ResizeObserver === "function") {
+          resizeObserver = new ResizeObserver(queueFitScale);
+          resizeObserver.observe(document.documentElement);
+          resizeObserver.observe(root);
+        }
+
+        if (typeof MutationObserver === "function") {
+          mutationObserver = new MutationObserver(queueDeferredFitScale);
+          mutationObserver.observe(root, {
+            childList: true,
+            subtree: true,
+          });
+        }
 
         if (document.readyState === "complete") {
           queueFitScale();
@@ -115,9 +136,27 @@ export function buildPreviewDocument(html: string): string {
           window.addEventListener("load", queueFitScale, { once: true });
         }
 
-        window.setTimeout(queueFitScale, 120);
-        window.setTimeout(queueFitScale, 600);
-        window.setTimeout(queueFitScale, 2200);
+        window.requestAnimationFrame(queueFitScale);
+
+        window.addEventListener("pagehide", function () {
+          if (rafId !== 0) {
+            window.cancelAnimationFrame(rafId);
+            rafId = 0;
+          }
+
+          if (deferredFitTimerId !== 0) {
+            window.clearTimeout(deferredFitTimerId);
+            deferredFitTimerId = 0;
+          }
+
+          if (resizeObserver) {
+            resizeObserver.disconnect();
+          }
+
+          if (mutationObserver) {
+            mutationObserver.disconnect();
+          }
+        }, { once: true });
       })();
     </script>
   </body>
@@ -131,6 +170,13 @@ export function createAbortError(): Error {
 }
 
 export function readLocalMediaFileAsDataUrl(file: File): Promise<string> {
+  if (file.size > LOCAL_MEDIA_PREVIEW_MAX_BYTES) {
+    const maxSizeMb = Math.floor(LOCAL_MEDIA_PREVIEW_MAX_BYTES / 1024 / 1024);
+    return Promise.reject(
+      new Error(`Local preview file is too large. Use a file under ${maxSizeMb}MB.`),
+    );
+  }
+
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
 

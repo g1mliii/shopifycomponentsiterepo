@@ -52,37 +52,16 @@ export default async function HomePage() {
   } catch (error) {
     loadErrorMessage = error instanceof Error ? error.message : "Failed to load public components.";
   }
-
-  if (!result) {
-    return (
-      <main className="relative mx-auto flex min-h-dvh w-full max-w-6xl items-center justify-center overflow-hidden px-6 py-12">
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute -top-28 -left-28 h-80 w-80 rounded-full opacity-25"
-          style={{
-            background:
-              "radial-gradient(circle at center, color-mix(in srgb, var(--color-moss) 34%, transparent), transparent 72%)",
-          }}
-        />
-        <section
-          className="relative w-full max-w-xl p-6"
-          style={{
-            borderRadius: "2rem",
-            border: "1px solid color-mix(in srgb, var(--color-timber) 50%, transparent)",
-            background: "var(--color-card)",
-            boxShadow: "var(--shadow-moss)",
-          }}
-        >
-          <h1 className="text-xl font-semibold tracking-tight" style={{ color: "var(--foreground)" }}>
-            Gallery unavailable
-          </h1>
-          <p className="mt-2 text-sm" style={{ color: "var(--color-muted-fg)" }}>
-            {loadErrorMessage ?? "Failed to load public components."}
-          </p>
-        </section>
-      </main>
-    );
-  }
+  const initialResult: PublicComponentsResult = result ?? {
+    components: [],
+    page: 1,
+    limit: PUBLIC_COMPONENTS_PAGE_SIZE,
+    total: 0,
+    totalPages: 1,
+    query: "",
+    category: null,
+    categories: [],
+  };
 
   const homeUrl = getAbsoluteUrl("/");
   const searchTargetUrl = `${homeUrl}?query={search_term_string}`;
@@ -118,23 +97,23 @@ export default async function HomePage() {
     },
     mainEntity: {
       "@type": "ItemList",
-      numberOfItems: result.total,
+      numberOfItems: initialResult.total,
     },
   };
 
   const itemListJsonLd =
-    result.components.length === 0
+    initialResult.components.length === 0
       ? null
       : {
           "@context": "https://schema.org",
           "@type": "ItemList",
-          numberOfItems: result.total,
-          itemListElement: result.components.slice(0, 10).map((component, index) => ({
+          numberOfItems: initialResult.total,
+          itemListElement: initialResult.components.slice(0, 10).map((component, index) => ({
             "@type": "ListItem",
             position: index + 1,
             url: getAbsoluteUrl(`/components/${component.id}/sandbox`),
             name: component.title,
-            image: component.thumbnail_url,
+            image: component.thumbnail_url ?? undefined,
           })),
         };
 
@@ -198,7 +177,10 @@ export default async function HomePage() {
         />
       </header>
 
-      <PublicGalleryContent initialResult={result} />
+      <PublicGalleryContent
+        initialResult={initialResult}
+        initialLoadErrorMessage={loadErrorMessage}
+      />
     </main>
   );
 }

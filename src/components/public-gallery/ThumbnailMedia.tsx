@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import type { PublicComponentMediaKind } from "@/lib/components/public-types";
 
@@ -27,7 +27,7 @@ function rememberFailedImageSrc(src: string): void {
 
 type ThumbnailMediaProps = {
   alt: string;
-  src: string;
+  src: string | null;
   mediaKind: PublicComponentMediaKind;
   imageLoading?: "eager" | "lazy";
 };
@@ -36,24 +36,27 @@ export function ThumbnailMedia({ alt, src, mediaKind, imageLoading = "lazy" }: T
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [isVideoHovered, setIsVideoHovered] = useState(false);
   const [failedImageSrc, setFailedImageSrc] = useState<string | null>(null);
+  const normalizedSrc = src?.trim() ?? "";
+  const hasSource = normalizedSrc.length > 0;
   const imageFailed =
-    mediaKind === "image" && (failedImageSrc === src || failedImageSrcs.has(src));
+    mediaKind === "image" && hasSource && (failedImageSrc === normalizedSrc || failedImageSrcs.has(normalizedSrc));
+  const shouldRenderVideoPreview = mediaKind === "video" && isVideoHovered;
 
-  useEffect(() => {
-    if (mediaKind !== "video") {
-      return;
-    }
-
+  const playVideoPreview = useCallback(() => {
     const video = videoRef.current;
     if (!video) {
       return;
     }
 
-    if (isVideoHovered) {
-      const playPromise = video.play();
-      if (typeof playPromise?.catch === "function") {
-        playPromise.catch(() => {});
-      }
+    const playPromise = video.play();
+    if (typeof playPromise?.catch === "function") {
+      playPromise.catch(() => {});
+    }
+  }, []);
+
+  const pauseAndResetVideoPreview = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) {
       return;
     }
 
@@ -65,7 +68,25 @@ export function ThumbnailMedia({ alt, src, mediaKind, imageLoading = "lazy" }: T
         // Some browsers can reject seek before enough data is available.
       }
     }
-  }, [isVideoHovered, mediaKind, src]);
+  }, []);
+
+  const handleVideoPointerEnter = useCallback(() => {
+    if (mediaKind !== "video") {
+      return;
+    }
+
+    setIsVideoHovered(true);
+    playVideoPreview();
+  }, [mediaKind, playVideoPreview]);
+
+  const handleVideoPointerLeaveOrCancel = useCallback(() => {
+    if (mediaKind !== "video") {
+      return;
+    }
+
+    setIsVideoHovered(false);
+    pauseAndResetVideoPreview();
+  }, [mediaKind, pauseAndResetVideoPreview]);
 
   return (
     <div
@@ -76,13 +97,20 @@ export function ThumbnailMedia({ alt, src, mediaKind, imageLoading = "lazy" }: T
         contain: "layout paint style",
         background: "var(--color-stone)",
       }}
-      onPointerEnter={mediaKind === "video" ? () => setIsVideoHovered(true) : undefined}
-      onPointerLeave={mediaKind === "video" ? () => setIsVideoHovered(false) : undefined}
-      onPointerCancel={mediaKind === "video" ? () => setIsVideoHovered(false) : undefined}
+      onPointerEnter={mediaKind === "video" ? handleVideoPointerEnter : undefined}
+      onPointerLeave={mediaKind === "video" ? handleVideoPointerLeaveOrCancel : undefined}
+      onPointerCancel={mediaKind === "video" ? handleVideoPointerLeaveOrCancel : undefined}
     >
-      {mediaKind === "image" && !imageFailed ? (
+      {mediaKind === "missing" ? (
+        <div
+          className="flex h-full w-full items-center justify-center text-xs font-medium uppercase tracking-wide"
+          style={{ color: "var(--color-muted-fg)" }}
+        >
+          Thumbnail pending
+        </div>
+      ) : mediaKind === "image" && hasSource && !imageFailed ? (
         <Image
-          src={src}
+          src={normalizedSrc}
           alt={alt}
           fill
           unoptimized
@@ -90,8 +118,8 @@ export function ThumbnailMedia({ alt, src, mediaKind, imageLoading = "lazy" }: T
           loading={imageLoading}
           className="h-full w-full object-cover"
           onError={() => {
-            rememberFailedImageSrc(src);
-            setFailedImageSrc(src);
+            rememberFailedImageSrc(normalizedSrc);
+            setFailedImageSrc(normalizedSrc);
           }}
         />
       ) : mediaKind === "image" ? (
@@ -102,18 +130,26 @@ export function ThumbnailMedia({ alt, src, mediaKind, imageLoading = "lazy" }: T
           Preview unavailable
         </div>
       ) : (
-        <>
+        shouldRenderVideoPreview ? (
           <video
             ref={videoRef}
             aria-label={alt}
             loop
             muted
             playsInline
-            preload={isVideoHovered ? "auto" : "metadata"}
-            className="absolute inset-0 h-full w-full object-cover"
-            src={src}
+            onLoadedData={isVideoHovered ? playVideoPreview : undefined}
+            preload="auto"
+            className="absolute inset-0 h-full w-full object-contain"
+            src={normalizedSrc}
           />
-        </>
+        ) : (
+          <div
+            className="flex h-full w-full items-center justify-center text-xs font-medium uppercase tracking-wide"
+            style={{ color: "var(--color-muted-fg)" }}
+          >
+            Hover to preview
+          </div>
+        )
       )}
     </div>
   );

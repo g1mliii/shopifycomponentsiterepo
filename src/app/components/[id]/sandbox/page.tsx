@@ -108,6 +108,7 @@ export default async function ComponentSandboxPage({ params }: SandboxPageProps)
 
   const componentUrl = getAbsoluteUrl(`/components/${component.id}/sandbox`);
   const description = buildComponentDescription(component.title, component.category);
+  const thumbnailUrl = getPublicThumbnailUrl(component.thumbnail_path);
   const componentJsonLd = {
     "@context": "https://schema.org",
     "@type": "CreativeWork",
@@ -115,7 +116,7 @@ export default async function ComponentSandboxPage({ params }: SandboxPageProps)
     description,
     genre: component.category,
     url: componentUrl,
-    image: getPublicThumbnailUrl(component.thumbnail_path),
+    image: thumbnailUrl ?? undefined,
     datePublished: component.created_at,
     inLanguage: "en",
     publisher: {

@@ -17,6 +17,7 @@ import {
   MAX_SPLIT_PERCENT,
   MIN_SPLIT_PERCENT,
   KEYBOARD_SPLIT_STEP_PERCENT,
+  LOCAL_MEDIA_PREVIEW_MAX_BYTES,
   PREVIEW_ENQUEUE_DEBOUNCE_MS,
   applyMediaOverrides,
   buildPreviewDocument,
@@ -47,6 +48,7 @@ import type {
 } from "@/lib/liquid/schema-types";
 
 const MAX_RENDER_SAMPLES = 60;
+const LOCAL_MEDIA_PREVIEW_ERROR_PREFIX = "Local preview file";
 
 type SandboxClientProps = {
   component: PublicComponentById;
@@ -414,11 +416,28 @@ export function SandboxClient({ component }: SandboxClientProps) {
 
   const handleSelectLocalMedia = useCallback(
     (pathKey: string, file: File | null) => {
+      const clearLocalMediaPreviewError = () => {
+        setPreviewError((current) =>
+          current?.startsWith(LOCAL_MEDIA_PREVIEW_ERROR_PREFIX) ? null : current,
+        );
+      };
+
       const versionMap = mediaSelectionVersionByPathRef.current;
       const nextVersion = (versionMap.get(pathKey) ?? 0) + 1;
       versionMap.set(pathKey, nextVersion);
 
       if (!file) {
+        clearLocalMediaPreviewError();
+        updateMediaOverride(pathKey, null);
+        return;
+      }
+
+      if (file.size > LOCAL_MEDIA_PREVIEW_MAX_BYTES) {
+        const selectedSizeMb = Math.ceil(file.size / 1024 / 1024);
+        const maxSizeMb = Math.floor(LOCAL_MEDIA_PREVIEW_MAX_BYTES / 1024 / 1024);
+        setPreviewError(
+          `Local preview file is ${selectedSizeMb}MB. Choose a file under ${maxSizeMb}MB.`,
+        );
         updateMediaOverride(pathKey, null);
         return;
       }
@@ -429,13 +448,19 @@ export function SandboxClient({ component }: SandboxClientProps) {
             return;
           }
 
+          clearLocalMediaPreviewError();
           updateMediaOverride(pathKey, dataUrl);
         })
-        .catch(() => {
+        .catch((error) => {
           if (versionMap.get(pathKey) !== nextVersion) {
             return;
           }
 
+          setPreviewError(
+            error instanceof Error
+              ? error.message
+              : "Local preview file could not be loaded.",
+          );
           updateMediaOverride(pathKey, null);
         });
     },

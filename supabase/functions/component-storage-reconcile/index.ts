@@ -2,7 +2,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 type MissingStorageRow = {
   id: string;
-  thumbnail_path: string;
+  thumbnail_path: string | null;
   file_path: string;
   missing_thumbnail: boolean;
   missing_file: boolean;
@@ -198,13 +198,15 @@ Deno.serve(async (request) => {
 
       summary.deletedRows += 1;
 
-      const thumbnailResult = await removePath(adminClient, "component-thumbnails", row.thumbnail_path);
-      if (thumbnailResult === "removed") {
-        summary.removedPathsFromBrokenRows += 1;
-      } else if (thumbnailResult === "missing") {
-        summary.ignoredMissingPaths += 1;
-      } else {
-        summary.errors.push(thumbnailResult);
+      if (row.thumbnail_path) {
+        const thumbnailResult = await removePath(adminClient, "component-thumbnails", row.thumbnail_path);
+        if (thumbnailResult === "removed") {
+          summary.removedPathsFromBrokenRows += 1;
+        } else if (thumbnailResult === "missing") {
+          summary.ignoredMissingPaths += 1;
+        } else {
+          summary.errors.push(thumbnailResult);
+        }
       }
 
       const fileResult = await removePath(adminClient, "liquid-files", row.file_path);
