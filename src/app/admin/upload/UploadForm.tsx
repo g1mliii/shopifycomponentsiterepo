@@ -31,6 +31,12 @@ import { renderLiquidPreview } from "@/lib/liquid/render";
 import { applyLiquidPreviewFallbacks } from "@/lib/liquid/preview-fallbacks";
 import { parseLiquidSchema } from "@/lib/liquid/schema-parse";
 import { buildInitialEditorState, createBlockInstanceFromDefinition, patchLiquidSchemaDefaults } from "@/lib/liquid/schema-patch";
+import {
+  getUploadBlockingSchemaDiagnostics,
+  getUploadBlockingSchemaMessage,
+  getUploadSuggestionSchemaDiagnostics,
+  getUploadSuggestionSchemaMessage,
+} from "@/lib/liquid/upload-blocking-diagnostics";
 import { parseUploadDraftSnapshot, UPLOAD_DRAFT_STORAGE_KEY, type UploadDraftSnapshot } from "@/lib/liquid/upload-draft";
 import { buildSettingLookup } from "@/lib/liquid/visibility-hints";
 import { validationLimits } from "@/lib/validation/upload-component";
@@ -218,6 +224,23 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
     }
     return map;
   }, [schema]);
+  const uploadBlockingDiagnostics = useMemo(
+    () => getUploadBlockingSchemaDiagnostics(diagnostics),
+    [diagnostics],
+  );
+  const uploadBlockingMessage = useMemo(
+    () => getUploadBlockingSchemaMessage(diagnostics),
+    [diagnostics],
+  );
+  const hasUploadBlockingDiagnostics = uploadBlockingDiagnostics.length > 0;
+  const uploadSuggestionDiagnostics = useMemo(
+    () => getUploadSuggestionSchemaDiagnostics(diagnostics),
+    [diagnostics],
+  );
+  const uploadSuggestionMessage = useMemo(
+    () => getUploadSuggestionSchemaMessage(diagnostics),
+    [diagnostics],
+  );
 
   const canAddSelectedBlock = useMemo(() => {
     if (!schema || !pendingBlockType) {
@@ -1009,6 +1032,11 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
       setUploadedComponent(null);
       setThumbnailStatusMessage(null);
 
+      if (hasUploadBlockingDiagnostics) {
+        setErrorMessage(uploadBlockingMessage ?? "Fix the Liquid file issues before uploading.");
+        return;
+      }
+
       const form = event.currentTarget;
       const formData = new FormData(form);
       const selectedThumbnailFile = thumbnailInputRef.current?.files?.[0] ?? null;
@@ -1222,6 +1250,42 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
             Current draft source is loaded. Re-selecting the file is optional unless you want to replace it.
           </p>
         ) : null}
+        {uploadBlockingMessage ? (
+          <div
+            role="status"
+            aria-live="polite"
+            className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700"
+          >
+            <p className="font-medium">Fix Liquid file issues before uploading.</p>
+            <p className="mt-1">{uploadBlockingMessage}</p>
+            <ul className="mt-2 list-disc space-y-1 pl-4">
+              {uploadBlockingDiagnostics.slice(0, 3).map((diagnostic, index) => (
+                <li key={`${diagnostic.code}-${diagnostic.path ?? "unknown"}-${index}`}>
+                  {diagnostic.message}
+                  {diagnostic.path ? ` (${diagnostic.path})` : ""}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+        {!hasUploadBlockingDiagnostics && uploadSuggestionMessage ? (
+          <div
+            role="status"
+            aria-live="polite"
+            className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800"
+          >
+            <p className="font-medium">Review Liquid file suggestions.</p>
+            <p className="mt-1">{uploadSuggestionMessage}</p>
+            <ul className="mt-2 list-disc space-y-1 pl-4">
+              {uploadSuggestionDiagnostics.slice(0, 3).map((diagnostic, index) => (
+                <li key={`${diagnostic.code}-${diagnostic.path ?? "unknown"}-${index}`}>
+                  {diagnostic.message}
+                  {diagnostic.path ? ` (${diagnostic.path})` : ""}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </div>
 
       <section className="rounded-lg border border-zinc-200 bg-zinc-50 p-4">
@@ -1356,10 +1420,12 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
 
       <button
         type="submit"
-        disabled={isSubmitting || isPreparingThumbnail}
+        disabled={isSubmitting || isPreparingThumbnail || hasUploadBlockingDiagnostics}
         className="touch-manipulation rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-transform duration-150 motion-reduce:transition-none motion-safe:hover:will-change-transform motion-safe:hover:transform-gpu motion-safe:hover:-translate-y-0.5 motion-safe:active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {isPreparingThumbnail ? "Compressing Thumbnail…" : isSubmitting ? "Uploading…" : "Upload Component"}
+        {hasUploadBlockingDiagnostics
+          ? "Fix Liquid File Issues"
+          : (isPreparingThumbnail ? "Compressing Thumbnail…" : isSubmitting ? "Uploading…" : "Upload Component")}
       </button>
     </form>
   );

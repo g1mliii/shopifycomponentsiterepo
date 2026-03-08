@@ -13,6 +13,8 @@ import type {
 } from "./schema-types";
 
 const SCHEMA_BLOCK_PATTERN = /{%\s*schema\s*%}([\s\S]*?){%\s*endschema\s*%}/i;
+const SECTION_SETTING_REFERENCE_PATTERN = /\bsection\.settings\.([a-zA-Z_][a-zA-Z0-9_]*)\b/g;
+const BLOCK_SETTING_REFERENCE_PATTERN = /\bblock\.settings\.([a-zA-Z_][a-zA-Z0-9_]*)\b/g;
 
 const NATIVE_SETTING_TYPES = new Set([
   "article",
@@ -175,6 +177,197 @@ function parseOptions(
   return options;
 }
 
+function pushDuplicateSettingIdDiagnostic(
+  diagnostics: LiquidSchemaDiagnostic[],
+  duplicatePath: string,
+  firstPath: string,
+  settingId: string,
+  contextLabel: string,
+): void {
+  diagnostics.push({
+    code: "duplicate_setting_id",
+    level: "warning",
+    message:
+      `Setting id "${settingId}" is duplicated in ${contextLabel}. `
+      + "Duplicate ids share one editor value, so changing one control can overwrite another.",
+    path: `${duplicatePath} (first declared at ${firstPath})`,
+  });
+}
+
+function pushDuplicateBlockTypeDiagnostic(
+  diagnostics: LiquidSchemaDiagnostic[],
+  duplicatePath: string,
+  firstPath: string,
+  blockType: string,
+): void {
+  diagnostics.push({
+    code: "duplicate_block_type",
+    level: "warning",
+    message:
+      `Block type "${blockType}" is duplicated in schema blocks. `
+      + "Duplicate block types can overwrite editor behavior and preset resolution.",
+    path: `${duplicatePath} (first declared at ${firstPath})`,
+  });
+}
+
+function collectReferencedSettingIds(
+  source: string,
+  pattern: RegExp,
+): string[] {
+  const ids = new Set<string>();
+
+  for (const match of source.matchAll(pattern)) {
+    const referencedId = match[1];
+    if (referencedId) {
+      ids.add(referencedId);
+    }
+  }
+
+  return [...ids];
+}
+
+function createSourceWithoutSchemaBlock(source: string, blockMatch: LiquidSchemaBlockMatch): string {
+  return `${source.slice(0, blockMatch.fullStart)}${source.slice(blockMatch.fullEnd)}`;
+}
+
+function addSettingReferenceDiagnostics(
+  diagnostics: LiquidSchemaDiagnostic[],
+  source: string,
+  schema: LiquidSchema,
+): void {
+  const sectionSettingIds = new Set(schema.settings.map((setting) => setting.id));
+  const blockSettingIds = new Set(
+    schema.blocks.flatMap((block) => block.settings.map((setting) => setting.id)),
+  );
+
+  for (const settingId of collectReferencedSettingIds(source, SECTION_SETTING_REFERENCE_PATTERN)) {
+    if (sectionSettingIds.has(settingId)) {
+      continue;
+    }
+
+    diagnostics.push({
+      code: "unknown_section_setting_reference",
+      level: "warning",
+      message:
+        `Template references section setting "${settingId}" but the schema does not define it. `
+        + "Add the missing setting or update the Liquid reference.",
+      path: `section.settings.${settingId}`,
+    });
+  }
+
+  for (const settingId of collectReferencedSettingIds(source, BLOCK_SETTING_REFERENCE_PATTERN)) {
+    if (blockSettingIds.has(settingId)) {
+      continue;
+    }
+
+    diagnostics.push({
+      code: "unknown_block_setting_reference",
+      level: "warning",
+      message:
+        `Template references block setting "${settingId}" but no block schema defines it. `
+        + "Add the missing block setting or update the Liquid reference.",
+      path: `block.settings.${settingId}`,
+    });
+  }
+}
+
+function addUnusedSettingDiagnostics(
+  diagnostics: LiquidSchemaDiagnostic[],
+  source: string,
+  schema: LiquidSchema,
+): void {
+  const referencedSectionSettingIds = new Set(
+    collectReferencedSettingIds(source, SECTION_SETTING_REFERENCE_PATTERN),
+  );
+  const referencedBlockSettingIds = new Set(
+    collectReferencedSettingIds(source, BLOCK_SETTING_REFERENCE_PATTERN),
+  );
+
+  for (const [index, setting] of schema.settings.entries()) {
+    if (referencedSectionSettingIds.has(setting.id)) {
+      continue;
+    }
+
+    diagnostics.push({
+      code: "unused_section_setting",
+      level: "info",
+      message:
+        `Schema declares section setting "${setting.id}" but the Liquid template does not reference it. `
+        + "Remove it or wire it into the template if needed.",
+      path: `settings[${index}].id`,
+    });
+  }
+
+  for (const [blockIndex, block] of schema.blocks.entries()) {
+    for (const [settingIndex, setting] of block.settings.entries()) {
+      if (referencedBlockSettingIds.has(setting.id)) {
+        continue;
+      }
+
+      diagnostics.push({
+        code: "unused_block_setting",
+        level: "info",
+        message:
+          `Block "${block.type}" declares setting "${setting.id}" but the Liquid template does not reference it. `
+          + "Remove it or wire it into the block markup if needed.",
+        path: `blocks[${blockIndex}].settings[${settingIndex}].id`,
+      });
+    }
+  }
+}
+
+function addBlockAndPresetDiagnostics(
+  diagnostics: LiquidSchemaDiagnostic[],
+  schema: LiquidSchema,
+): void {
+  const firstBlockPathByType = new Map<string, string>();
+  const blockDefinitionByType = new Map<string, LiquidSchemaBlockDefinition>();
+
+  for (const [index, block] of schema.blocks.entries()) {
+    const blockPath = `blocks[${index}].type`;
+    const firstPath = firstBlockPathByType.get(block.type);
+    if (firstPath) {
+      pushDuplicateBlockTypeDiagnostic(diagnostics, blockPath, firstPath, block.type);
+    } else {
+      firstBlockPathByType.set(block.type, blockPath);
+      blockDefinitionByType.set(block.type, block);
+    }
+  }
+
+  for (const [presetIndex, preset] of schema.presets.entries()) {
+    for (const [blockIndex, presetBlock] of preset.blocks.entries()) {
+      const blockDefinition = blockDefinitionByType.get(presetBlock.type);
+      if (!blockDefinition) {
+        diagnostics.push({
+          code: "unknown_preset_block_type",
+          level: "warning",
+          message:
+            `Preset references block type "${presetBlock.type}" but the schema does not define it. `
+            + "Add the block definition or update the preset block type.",
+          path: `presets[${presetIndex}].blocks[${blockIndex}].type`,
+        });
+        continue;
+      }
+
+      const blockSettingIds = new Set(blockDefinition.settings.map((setting) => setting.id));
+      for (const settingId of Object.keys(presetBlock.settings)) {
+        if (blockSettingIds.has(settingId)) {
+          continue;
+        }
+
+        diagnostics.push({
+          code: "unknown_preset_block_setting",
+          level: "warning",
+          message:
+            `Preset block "${presetBlock.type}" sets "${settingId}" but that setting is not declared on the block schema. `
+            + "Add the setting to the block schema or remove it from the preset.",
+          path: `presets[${presetIndex}].blocks[${blockIndex}].settings.${settingId}`,
+        });
+      }
+    }
+  }
+}
+
 function parseSetting(
   value: unknown,
   index: number,
@@ -255,6 +448,7 @@ function parseBlockDefinition(
   const type = asString(value.type) ?? `block_${index + 1}`;
   const settingsRaw = Array.isArray(value.settings) ? value.settings : [];
   const settings: LiquidSchemaSetting[] = [];
+  const firstSettingPathById = new Map<string, string>();
 
   for (const [settingIndex, settingValue] of settingsRaw.entries()) {
     const parsedSetting = parseSetting(
@@ -264,6 +458,19 @@ function parseBlockDefinition(
       `blocks[${index}].settings`,
     );
     if (parsedSetting) {
+      const settingPath = `blocks[${index}].settings[${settingIndex}].id`;
+      const firstPath = firstSettingPathById.get(parsedSetting.id);
+      if (firstPath) {
+        pushDuplicateSettingIdDiagnostic(
+          diagnostics,
+          settingPath,
+          firstPath,
+          parsedSetting.id,
+          `block "${type}" settings`,
+        );
+      } else {
+        firstSettingPathById.set(parsedSetting.id, settingPath);
+      }
       settings.push(parsedSetting);
     }
   }
@@ -458,9 +665,23 @@ export function parseLiquidSchema(source: string): ParsedLiquidSchemaResult {
   }
 
   const settings: LiquidSchemaSetting[] = [];
+  const firstSettingPathById = new Map<string, string>();
   for (const [index, value] of settingsRaw.entries()) {
     const parsed = parseSetting(value, index, diagnostics, "settings");
     if (parsed) {
+      const settingPath = `settings[${index}].id`;
+      const firstPath = firstSettingPathById.get(parsed.id);
+      if (firstPath) {
+        pushDuplicateSettingIdDiagnostic(
+          diagnostics,
+          settingPath,
+          firstPath,
+          parsed.id,
+          "section settings",
+        );
+      } else {
+        firstSettingPathById.set(parsed.id, settingPath);
+      }
       settings.push(parsed);
     }
   }
@@ -488,6 +709,11 @@ export function parseLiquidSchema(source: string): ParsedLiquidSchemaResult {
     presets,
     raw: schemaObject,
   };
+
+  const sourceWithoutSchemaBlock = createSourceWithoutSchemaBlock(source, blockMatch);
+  addSettingReferenceDiagnostics(diagnostics, sourceWithoutSchemaBlock, schema);
+  addUnusedSettingDiagnostics(diagnostics, sourceWithoutSchemaBlock, schema);
+  addBlockAndPresetDiagnostics(diagnostics, schema);
 
   return {
     schema,

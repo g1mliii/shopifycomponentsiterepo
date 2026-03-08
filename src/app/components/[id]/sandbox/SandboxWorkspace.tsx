@@ -231,16 +231,19 @@ export function SandboxWorkspace({
                 const isCollapsed = collapsedBlockIds.has(block.id);
                 const blockLabel = getPlainLanguageSettingLabel(definition?.name ?? block.type);
                 return (
-                  <div key={block.id} data-testid="sandbox-block-card" className="sandbox-card p-3">
-                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                      <p className="sandbox-title text-sm font-semibold">
+                  <div key={block.id} data-testid="sandbox-block-card" className="sandbox-card min-w-0 p-3">
+                    <div className="mb-3 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <p className="sandbox-title min-w-0 text-sm font-semibold">
                         Block {index + 1}: {blockLabel}
                       </p>
-                      <div className="flex gap-1">
+                      <div
+                        data-testid="sandbox-block-actions"
+                        className="flex max-w-full flex-wrap items-center gap-1 sm:justify-end"
+                      >
                         <button
                           type="button"
                           onClick={() => handleToggleBlockCollapsed(block.id)}
-                          className="sandbox-btn sandbox-btn-secondary sandbox-focus-ring h-8 rounded-lg px-2 text-xs"
+                          className="sandbox-btn sandbox-btn-secondary sandbox-focus-ring h-7 rounded-md px-2 text-[11px]"
                           aria-expanded={!isCollapsed}
                         >
                           {isCollapsed ? "Expand" : "Collapse"}
@@ -249,7 +252,7 @@ export function SandboxWorkspace({
                           type="button"
                           onClick={() => onMoveBlock(block.id, "up")}
                           disabled={index === 0}
-                          className="sandbox-btn sandbox-btn-secondary sandbox-focus-ring h-8 rounded-lg px-2 text-xs"
+                          className="sandbox-btn sandbox-btn-secondary sandbox-focus-ring h-7 rounded-md px-2 text-[11px]"
                         >
                           Up
                         </button>
@@ -257,16 +260,16 @@ export function SandboxWorkspace({
                           type="button"
                           onClick={() => onMoveBlock(block.id, "down")}
                           disabled={index === editorState.blocks.length - 1}
-                          className="sandbox-btn sandbox-btn-secondary sandbox-focus-ring h-8 rounded-lg px-2 text-xs"
+                          className="sandbox-btn sandbox-btn-secondary sandbox-focus-ring h-7 rounded-md px-2 text-[11px]"
                         >
                           Down
                         </button>
                         <button
                           type="button"
                           onClick={() => handleRemoveBlockClick(block.id)}
-                          className="sandbox-btn sandbox-btn-danger sandbox-focus-ring h-8 rounded-lg px-2 text-xs"
+                          className="sandbox-btn sandbox-btn-danger sandbox-focus-ring h-7 rounded-md px-2 text-[11px]"
                         >
-                          Remove
+                          Delete
                         </button>
                       </div>
                     </div>

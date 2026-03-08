@@ -96,6 +96,25 @@ test("sandbox renders live preview and downloads patched liquid", async ({ page 
   await expect(fourthBlockCard.getByText("Settings hidden. Expand to edit this block.")).toBeVisible();
   await fourthBlockCard.getByRole("button", { name: "Expand" }).click();
   await expect(fourthBlockCard.getByTestId("sandbox-block-settings")).toBeVisible();
+  await expect(fourthBlockCard.getByRole("button", { name: "Delete" })).toBeVisible();
+
+  const blockActionFitsWithinCard = await fourthBlockCard.evaluate((card) => {
+    const actions = card.querySelector('[data-testid="sandbox-block-actions"]');
+    if (!actions) {
+      return null;
+    }
+
+    const cardRect = card.getBoundingClientRect();
+    const actionsRect = actions.getBoundingClientRect();
+    return {
+      fitsHorizontally: actionsRect.right <= cardRect.right + 1,
+      startsWithinCard: actionsRect.left >= cardRect.left - 1,
+    };
+  });
+
+  expect(blockActionFitsWithinCard).not.toBeNull();
+  expect(blockActionFitsWithinCard?.fitsHorizontally ?? false).toBeTruthy();
+  expect(blockActionFitsWithinCard?.startsWithinCard ?? false).toBeTruthy();
 
   const defaultMaxWidth = await page.evaluate(() => getComputedStyle(document.querySelector("main")!).maxWidth);
   expect(defaultMaxWidth).toBe("none");
