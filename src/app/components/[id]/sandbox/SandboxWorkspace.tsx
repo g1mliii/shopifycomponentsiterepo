@@ -1,7 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type {
+  ChangeEvent as ReactChangeEvent,
+  CSSProperties,
+  FormEvent as ReactFormEvent,
+  KeyboardEvent as ReactKeyboardEvent,
+  PointerEvent as ReactPointerEvent,
+  RefObject,
+} from "react";
 
 import { SettingControl } from "./setting-control";
 import {
@@ -17,7 +24,9 @@ import { getConditionalVisibilityHints } from "@/lib/liquid/visibility-hints";
 import type {
   LiquidEditorState,
   LiquidSchema,
+  LiquidSchemaEditorEntry,
   LiquidSchemaDiagnostic,
+  LiquidSchemaPresentation,
   LiquidSchemaSetting,
   LiquidSettingJsonValue,
 } from "@/lib/liquid/schema-types";
@@ -40,6 +49,8 @@ type SandboxWorkspaceProps = {
   blockSettingLookupByType: Map<string, Map<string, LiquidSchemaSetting>>;
   previewError: string | null;
   iframeDocument: string;
+  getFullPreviewDocument: () => string;
+  previewTitle?: string;
   previewViewportAspectRatio?: string;
   previewMode: PreviewMode;
   fitPreviewToContent: boolean;
@@ -57,10 +68,69 @@ type SandboxWorkspaceProps = {
 
 type PreviewMetrics = {
   flowHeight: number;
+  maxScrollTop: number;
   scale: number;
+  scrollTop: number;
   visualHeight: number;
   visualWidth: number;
+  viewportHeight: number;
+  viewportLockedLayout: boolean;
 };
+
+function renderPresentationEntry(
+  presentation: LiquidSchemaPresentation,
+  key: string,
+) {
+  if (presentation.type === "header") {
+    return (
+      <div key={key} className="px-1 pt-1">
+        <h3
+          className="sandbox-muted text-xs font-semibold uppercase tracking-[0.18em]"
+          data-testid="sandbox-schema-header"
+        >
+          {presentation.content}
+        </h3>
+      </div>
+    );
+  }
+
+  return (
+    <div key={key} className="px-1">
+      <p
+        className="sandbox-muted text-xs leading-relaxed"
+        data-testid="sandbox-schema-paragraph"
+      >
+        {presentation.content}
+      </p>
+    </div>
+  );
+}
+
+function renderEditorEntry(
+  entry: LiquidSchemaEditorEntry,
+  key: string,
+  value: LiquidSettingJsonValue,
+  pathKey: string,
+  conditionalHints: string[] | undefined,
+  onSettingValueChange: (pathKey: string, nextValue: LiquidSettingJsonValue) => void,
+  onSelectLocalMedia: (pathKey: string, file: File | null) => void,
+) {
+  if (entry.kind === "presentation") {
+    return renderPresentationEntry(entry.presentation, key);
+  }
+
+  return (
+    <SettingControl
+      key={key}
+      setting={entry.setting}
+      value={value}
+      pathKey={pathKey}
+      conditionalHints={conditionalHints}
+      onChange={onSettingValueChange}
+      onSelectLocalMedia={onSelectLocalMedia}
+    />
+  );
+}
 
 export function SandboxWorkspace({
   workspaceRef,
@@ -78,6 +148,8 @@ export function SandboxWorkspace({
   blockSettingLookupByType,
   previewError,
   iframeDocument,
+  getFullPreviewDocument,
+  previewTitle,
   previewViewportAspectRatio,
   previewMode,
   fitPreviewToContent,
@@ -97,7 +169,11 @@ export function SandboxWorkspace({
     && previewViewportAspectRatio.trim().length > 0;
   const [collapsedBlockIds, setCollapsedBlockIds] = useState<Set<string>>(() => new Set());
   const [previewMetrics, setPreviewMetrics] = useState<PreviewMetrics | null>(null);
+  const [previewScrollPercent, setPreviewScrollPercent] = useState(0);
+  const [fullPreviewError, setFullPreviewError] = useState<string | null>(null);
+  const [loadedIframeDocument, setLoadedIframeDocument] = useState<string | null>(null);
   const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
+  const previewSyncTimeoutIdsRef = useRef<number[]>([]);
 
   const blockDefinitionByType = useMemo(() => {
     const map = new Map<string, LiquidSchema["blocks"][number]>();
@@ -107,9 +183,9 @@ export function SandboxWorkspace({
     return map;
   }, [schema.blocks]);
 
-  const collapsedActiveBlockCount = editorState.blocks.reduce((count, block) => {
+  const collapsedActiveBlockCount = useMemo(() => editorState.blocks.reduce((count, block) => {
     return collapsedBlockIds.has(block.id) ? count + 1 : count;
-  }, 0);
+  }, 0), [collapsedBlockIds, editorState.blocks]);
   const allBlocksCollapsed = editorState.blocks.length > 0 && collapsedActiveBlockCount === editorState.blocks.length;
   const hasCollapsedBlocks = collapsedActiveBlockCount > 0;
 
@@ -153,29 +229,61 @@ export function SandboxWorkspace({
         return;
       }
 
-      if (!previewIframeRef.current?.contentWindow || event.source !== previewIframeRef.current.contentWindow) {
+      const iframeWindow = previewIframeRef.current?.contentWindow;
+      if (!iframeWindow || event.source !== iframeWindow) {
         return;
       }
 
       const visualHeight = Number(event.data.visualHeight);
       const visualWidth = Number(event.data.visualWidth);
       const flowHeight = Number(event.data.flowHeight);
+      const scrollTop = Number(event.data.scrollTop);
+      const maxScrollTop = Number(event.data.maxScrollTop);
       const scale = Number(event.data.scale);
+      const viewportHeight = Number(event.data.viewportHeight);
+      const viewportLockedLayout = event.data.viewportLockedLayout === true;
       if (
         !Number.isFinite(visualHeight)
         || !Number.isFinite(visualWidth)
         || !Number.isFinite(flowHeight)
+        || !Number.isFinite(scrollTop)
+        || !Number.isFinite(maxScrollTop)
         || !Number.isFinite(scale)
+        || !Number.isFinite(viewportHeight)
       ) {
         return;
       }
 
-      setPreviewMetrics({
-        visualHeight,
-        visualWidth,
-        flowHeight,
-        scale,
+      setPreviewMetrics((current) => {
+        if (
+          current
+          && current.visualHeight === visualHeight
+          && current.visualWidth === visualWidth
+          && current.flowHeight === flowHeight
+          && current.scrollTop === scrollTop
+          && current.maxScrollTop === maxScrollTop
+          && current.scale === scale
+          && current.viewportHeight === viewportHeight
+          && current.viewportLockedLayout === viewportLockedLayout
+        ) {
+          return current;
+        }
+
+        return {
+          visualHeight,
+          visualWidth,
+          flowHeight,
+          scrollTop,
+          maxScrollTop,
+          scale,
+          viewportHeight,
+          viewportLockedLayout,
+        };
       });
+      const nextScrollPercent = maxScrollTop > 0
+        ? Math.round((scrollTop / maxScrollTop) * 100)
+        : 0;
+      setPreviewScrollPercent((current) => (current === nextScrollPercent ? current : nextScrollPercent));
     };
 
     window.addEventListener("message", handleWindowMessage);
@@ -183,6 +291,53 @@ export function SandboxWorkspace({
       window.removeEventListener("message", handleWindowMessage);
     };
   }, []);
+
+  const postPreviewState = useCallback((scrollPercent: number) => {
+    previewIframeRef.current?.contentWindow?.postMessage({
+      type: "pressplay-preview-set-state",
+      scrollProgress: scrollPercent / 100,
+    }, "*");
+  }, []);
+
+  const postPreviewScrollDelta = useCallback((deltaY: number) => {
+    previewIframeRef.current?.contentWindow?.postMessage({
+      type: "pressplay-preview-scroll-delta",
+      deltaY,
+    }, "*");
+  }, []);
+
+  const requestPreviewMetrics = useCallback(() => {
+    previewIframeRef.current?.contentWindow?.postMessage({
+      type: "pressplay-preview-request-metrics",
+    }, "*");
+  }, []);
+
+  useEffect(() => {
+    postPreviewState(previewScrollPercent);
+  }, [postPreviewState, previewScrollPercent]);
+
+  const clearPreviewSyncTimeouts = useCallback(() => {
+    for (const timeoutId of previewSyncTimeoutIdsRef.current) {
+      window.clearTimeout(timeoutId);
+    }
+    previewSyncTimeoutIdsRef.current = [];
+  }, []);
+
+  const scheduleInitialPreviewSync = useCallback(() => {
+    clearPreviewSyncTimeouts();
+    const retryDelaysMs = [0, 120, 360, 900];
+    previewSyncTimeoutIdsRef.current = retryDelaysMs.map((delayMs) => {
+      return window.setTimeout(() => {
+        requestPreviewMetrics();
+      }, delayMs);
+    });
+  }, [clearPreviewSyncTimeouts, requestPreviewMetrics]);
+
+  useEffect(() => {
+    return () => {
+      clearPreviewSyncTimeouts();
+    };
+  }, [clearPreviewSyncTimeouts]);
 
   const effectivePreviewAspectRatio = useMemo(() => {
     if (hasPreviewAspectRatio) {
@@ -197,18 +352,30 @@ export function SandboxWorkspace({
   }, [hasPreviewAspectRatio, previewMode, previewViewportAspectRatio]);
 
   const fitPreviewHeight = useMemo(() => {
-    if (!fitPreviewToContent || !previewMetrics) {
+    if (!fitPreviewToContent || !previewMetrics || previewMetrics.maxScrollTop > 1) {
       return null;
     }
 
-    const paddedHeight = previewMetrics.visualHeight + 24;
-    return Math.max(220, Math.min(900, paddedHeight));
+    const baseHeight = previewMetrics.visualHeight + 24;
+    return Math.max(220, Math.min(760, baseHeight));
   }, [fitPreviewToContent, previewMetrics]);
+
+  const inferredViewportLockedLayout = useMemo(() => {
+    return /position\s*:\s*(fixed|sticky)/i.test(iframeDocument);
+  }, [iframeDocument]);
+  const hasViewportLockedPreview = (previewMetrics?.maxScrollTop ?? 0) > 1;
+  const hasViewportLockedLayout = previewMetrics?.viewportLockedLayout ?? inferredViewportLockedLayout;
+  const hasPopupStylePreview = hasViewportLockedLayout
+    && (previewMetrics?.maxScrollTop ?? 0) <= 1;
+  const usesOverlayViewportFallback = hasPopupStylePreview && previewMode === "overlay";
+  const usesSectionViewportFallback = hasPopupStylePreview && previewMode === "section";
+  const isPreviewLoaded = loadedIframeDocument === iframeDocument;
+  const canFitPreviewToContent = !hasViewportLockedPreview;
 
   const previewCanvasStyle = useMemo(() => {
     const baseStyle: CSSProperties = {};
 
-    if (previewMode === "overlay") {
+    if (previewMode === "overlay" || usesOverlayViewportFallback) {
       baseStyle.width = "min(100%, 26rem)";
       baseStyle.maxWidth = "100%";
       baseStyle.height = fitPreviewHeight !== null ? `${fitPreviewHeight}px` : "min(100%, 42rem)";
@@ -227,6 +394,32 @@ export function SandboxWorkspace({
       return baseStyle;
     }
 
+    if (usesSectionViewportFallback) {
+      baseStyle.width = "100%";
+      baseStyle.height = "min(100%, 42rem)";
+      baseStyle.maxWidth = "100%";
+      baseStyle.maxHeight = "100%";
+      baseStyle.borderRadius = "1rem";
+      baseStyle.overflow = "hidden";
+      baseStyle.border = "1px solid color-mix(in srgb, var(--color-timber) 52%, transparent)";
+      baseStyle.boxShadow = "0 18px 40px rgba(50, 44, 34, 0.12)";
+      baseStyle.background = "#ffffff";
+      return baseStyle;
+    }
+
+    if (hasViewportLockedPreview) {
+      baseStyle.width = "100%";
+      baseStyle.height = "min(100%, 42rem)";
+      baseStyle.maxWidth = "100%";
+      baseStyle.maxHeight = "100%";
+      baseStyle.borderRadius = "0";
+      baseStyle.overflow = "hidden";
+      baseStyle.border = "1px solid color-mix(in srgb, var(--color-timber) 52%, transparent)";
+      baseStyle.boxShadow = "none";
+      baseStyle.background = "#111111";
+      return baseStyle;
+    }
+
     if (effectivePreviewAspectRatio) {
       baseStyle.aspectRatio = effectivePreviewAspectRatio;
       baseStyle.height = fitPreviewHeight !== null ? `${fitPreviewHeight}px` : "100%";
@@ -239,13 +432,102 @@ export function SandboxWorkspace({
     baseStyle.width = "100%";
     baseStyle.height = fitPreviewHeight !== null ? `${fitPreviewHeight}px` : "100%";
     return baseStyle;
-  }, [effectivePreviewAspectRatio, fitPreviewHeight, previewMode]);
+  }, [
+    effectivePreviewAspectRatio,
+    fitPreviewHeight,
+    hasViewportLockedPreview,
+    previewMode,
+    usesOverlayViewportFallback,
+    usesSectionViewportFallback,
+  ]);
 
-  const previewStageClassName = previewMode === "overlay"
-    ? "flex h-full w-full items-center justify-center overflow-auto p-4"
+  const previewStageClassName = hasViewportLockedPreview
+    ? "flex h-full w-full items-start justify-stretch overflow-hidden p-0"
+    : previewMode === "overlay" || usesOverlayViewportFallback
+      ? "flex h-full w-full items-center justify-center overflow-hidden p-4"
+    : usesSectionViewportFallback
+      ? "flex h-full w-full items-start justify-stretch overflow-hidden p-4"
     : effectivePreviewAspectRatio || fitPreviewHeight !== null
-      ? "flex h-full w-full items-start justify-center overflow-auto p-3"
-      : "h-full w-full overflow-auto";
+      ? "flex h-full w-full items-start justify-center overflow-hidden p-3"
+      : "h-full w-full overflow-hidden";
+  const canDrivePreviewScroll = previewError === null;
+  const hasScrollablePreviewRange = (previewMetrics?.maxScrollTop ?? 0) > 1;
+  const previewScrollLabel = hasScrollablePreviewRange
+      ? `${previewScrollPercent}%`
+      : previewMetrics === null
+        ? isPreviewLoaded
+          ? "Preview ready"
+          : "Preview loading"
+        : !canDrivePreviewScroll
+          ? "Preview unavailable"
+        : fitPreviewToContent && !canFitPreviewToContent
+          ? "Fit disabled for scroll layout"
+        : fitPreviewToContent
+          ? "Disabled while fitting"
+          : "No scroll range";
+
+  useEffect(() => {
+    const handleWindowWheel = (event: WheelEvent) => {
+      if (!canDrivePreviewScroll || !hasScrollablePreviewRange) {
+        return;
+      }
+
+      const iframe = previewIframeRef.current;
+      if (!iframe) {
+        return;
+      }
+
+      const rect = iframe.getBoundingClientRect();
+      const withinHorizontalBounds = event.clientX >= rect.left && event.clientX <= rect.right;
+      const withinVerticalBounds = event.clientY >= rect.top && event.clientY <= rect.bottom;
+      if (!withinHorizontalBounds || !withinVerticalBounds) {
+        return;
+      }
+
+      event.preventDefault();
+      postPreviewScrollDelta(event.deltaY);
+    };
+
+    window.addEventListener("wheel", handleWindowWheel, { passive: false });
+    return () => {
+      window.removeEventListener("wheel", handleWindowWheel);
+    };
+  }, [canDrivePreviewScroll, hasScrollablePreviewRange, postPreviewScrollDelta]);
+
+  useEffect(() => {
+    if (!canFitPreviewToContent && fitPreviewToContent) {
+      onFitPreviewToContentChange(false);
+    }
+  }, [canFitPreviewToContent, fitPreviewToContent, onFitPreviewToContentChange]);
+
+  const handleOpenFullPreview = useCallback(() => {
+    if (previewError) {
+      setFullPreviewError("Resolve the preview error before opening full preview.");
+      return;
+    }
+
+    try {
+      const previewWindow = window.open("", "_blank");
+      if (!previewWindow) {
+        setFullPreviewError("The browser blocked the full preview tab. Allow pop-ups and try again.");
+        return;
+      }
+
+      previewWindow.document.open();
+      previewWindow.document.write(getFullPreviewDocument());
+      previewWindow.document.close();
+      previewWindow.document.title = previewTitle?.trim() || schema.name || "Preview";
+      setFullPreviewError(null);
+    } catch (error) {
+      setFullPreviewError(error instanceof Error ? error.message : "Failed to open full preview.");
+    }
+  }, [getFullPreviewDocument, previewError, previewTitle, schema.name]);
+
+  const handlePreviewScrollChange = (
+    event: ReactChangeEvent<HTMLInputElement> | ReactFormEvent<HTMLInputElement>,
+  ) => {
+    setPreviewScrollPercent(Number(event.currentTarget.value));
+  };
 
   return (
     <div
@@ -267,27 +549,32 @@ export function SandboxWorkspace({
             </p>
           </div>
 
-          {schema.settings.length === 0 ? (
+          {schema.editorEntries.length === 0 ? (
             <div className="sandbox-card p-3 text-sm" style={{ color: "var(--color-bark)" }}>
               No section settings were found in schema.
             </div>
           ) : (
-            schema.settings.map((setting, settingIndex) => (
-              <SettingControl
-                key={`${setting.id}:${settingIndex}`}
-                setting={setting}
-                value={editorState.sectionSettings[setting.id] ?? ""}
-                pathKey={getSectionSettingPath(setting.id)}
-                conditionalHints={getConditionalVisibilityHints(
+            schema.editorEntries.map((entry, settingIndex) => {
+              if (entry.kind === "presentation") {
+                return renderPresentationEntry(entry.presentation, `section:presentation:${settingIndex}`);
+              }
+
+              const setting = entry.setting;
+              return renderEditorEntry(
+                entry,
+                `${setting.id}:${settingIndex}`,
+                editorState.sectionSettings[setting.id] ?? "",
+                getSectionSettingPath(setting.id),
+                getConditionalVisibilityHints(
                   setting,
                   editorState.sectionSettings[setting.id],
                   editorState.sectionSettings,
                   sectionSettingLookup,
-                )}
-                onChange={onSettingValueChange}
-                onSelectLocalMedia={onSelectLocalMedia}
-              />
-            ))
+                ),
+                onSettingValueChange,
+                onSelectLocalMedia,
+              );
+            })
           )}
 
           {hasBlockControls ? (
@@ -403,22 +690,30 @@ export function SandboxWorkspace({
                       </p>
                     ) : (
                       <div data-testid="sandbox-block-settings" className="space-y-3">
-                        {(definition?.settings ?? []).map((setting, settingIndex) => (
-                          <SettingControl
-                            key={`${block.id}:${setting.id}:${settingIndex}`}
-                            setting={setting}
-                            value={block.settings[setting.id] ?? ""}
-                            pathKey={getBlockSettingPath(block.id, setting.id)}
-                            conditionalHints={getConditionalVisibilityHints(
+                        {(definition?.editorEntries ?? []).map((entry, settingIndex) => {
+                          if (entry.kind === "presentation") {
+                            return renderPresentationEntry(
+                              entry.presentation,
+                              `${block.id}:presentation:${settingIndex}`,
+                            );
+                          }
+
+                          const setting = entry.setting;
+                          return renderEditorEntry(
+                            entry,
+                            `${block.id}:${setting.id}:${settingIndex}`,
+                            block.settings[setting.id] ?? "",
+                            getBlockSettingPath(block.id, setting.id),
+                            getConditionalVisibilityHints(
                               setting,
                               block.settings[setting.id],
                               block.settings,
                               settingLookup,
-                            )}
-                            onChange={onSettingValueChange}
-                            onSelectLocalMedia={onSelectLocalMedia}
-                          />
-                        ))}
+                            ),
+                            onSettingValueChange,
+                            onSelectLocalMedia,
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -502,6 +797,13 @@ export function SandboxWorkspace({
               {previewError ? <p className="mt-1 text-xs" style={{ color: "#8f2f29" }}>{previewError}</p> : null}
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handleOpenFullPreview}
+                className="sandbox-btn sandbox-btn-secondary sandbox-focus-ring h-9 px-3 text-xs"
+              >
+                Open Full Preview
+              </button>
               <label className="sandbox-muted flex items-center gap-2 text-xs">
                 <span className="font-semibold">Mode</span>
                 <select
@@ -519,21 +821,64 @@ export function SandboxWorkspace({
                 <input
                   type="checkbox"
                   checked={fitPreviewToContent}
+                  disabled={!canFitPreviewToContent}
                   onChange={(event) => onFitPreviewToContentChange(event.target.checked)}
                 />
                 <span className="font-semibold">Fit Content</span>
               </label>
             </div>
           </div>
+          {hasViewportLockedPreview ? (
+            <p className="sandbox-card-warn mt-3 px-3 py-2 text-xs" style={{ borderRadius: "0.85rem", color: "#704322" }}>
+              This section uses scroll-driven or sticky layout behavior. Use Full Preview for accurate interaction validation.
+            </p>
+          ) : null}
+          {fullPreviewError ? (
+            <p className="mt-3 text-xs" style={{ color: "#8f2f29" }}>{fullPreviewError}</p>
+          ) : null}
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <label className="sandbox-muted flex min-w-[16rem] flex-1 items-center gap-3 text-xs">
+              <span className="min-w-[5rem] font-semibold">Scroll</span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={previewScrollPercent}
+                disabled={!canDrivePreviewScroll}
+                onChange={handlePreviewScrollChange}
+                onInput={handlePreviewScrollChange}
+                className="flex-1 accent-[var(--color-moss)]"
+                aria-label="Scroll Progress"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => setPreviewScrollPercent(0)}
+              disabled={previewScrollPercent === 0}
+              className="sandbox-btn sandbox-btn-secondary sandbox-focus-ring h-9 px-3 text-xs"
+            >
+              Reset Scroll
+            </button>
+            <span className="sandbox-muted text-xs">{previewScrollLabel}</span>
+          </div>
         </header>
         <div className="min-h-0 w-full flex-1">
-          <div className={previewStageClassName}>
+          <div
+            className={previewStageClassName}
+            data-testid="sandbox-preview-stage"
+          >
             <div className="max-h-full max-w-full" style={previewCanvasStyle}>
               <iframe
                 ref={previewIframeRef}
                 title="Component preview"
                 srcDoc={iframeDocument}
-                onLoad={() => setPreviewMetrics(null)}
+                onLoad={() => {
+                  setLoadedIframeDocument(iframeDocument);
+                  setPreviewMetrics(null);
+                  setPreviewScrollPercent(0);
+                  scheduleInitialPreviewSync();
+                }}
                 sandbox="allow-scripts"
                 referrerPolicy="no-referrer"
                 className={`h-full w-full border-0 ${previewMode === "overlay" ? "bg-white" : ""} ${

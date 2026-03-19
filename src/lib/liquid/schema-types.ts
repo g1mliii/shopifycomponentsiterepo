@@ -37,11 +37,28 @@ export interface LiquidSchemaSetting {
   raw: Record<string, unknown>;
 }
 
+export interface LiquidSchemaPresentation {
+  type: "header" | "paragraph";
+  content: string;
+  raw: Record<string, unknown>;
+}
+
+export type LiquidSchemaEditorEntry =
+  | {
+    kind: "setting";
+    setting: LiquidSchemaSetting;
+  }
+  | {
+    kind: "presentation";
+    presentation: LiquidSchemaPresentation;
+  };
+
 export interface LiquidSchemaBlockDefinition {
   type: string;
   name: string;
   limit: number | null;
   settings: LiquidSchemaSetting[];
+  editorEntries: LiquidSchemaEditorEntry[];
   raw: Record<string, unknown>;
 }
 
@@ -53,6 +70,7 @@ export interface LiquidSchemaPresetBlock {
 
 export interface LiquidSchemaPreset {
   name: string;
+  settings: Record<string, LiquidSettingJsonValue>;
   blocks: LiquidSchemaPresetBlock[];
   raw: Record<string, unknown>;
 }
@@ -60,6 +78,7 @@ export interface LiquidSchemaPreset {
 export interface LiquidSchema {
   name: string;
   settings: LiquidSchemaSetting[];
+  editorEntries: LiquidSchemaEditorEntry[];
   blocks: LiquidSchemaBlockDefinition[];
   presets: LiquidSchemaPreset[];
   raw: Record<string, unknown>;

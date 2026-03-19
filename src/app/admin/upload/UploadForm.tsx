@@ -23,7 +23,9 @@ import {
   type PreviewMode,
   applyMediaOverrides,
   buildPreviewDocument,
+  buildFullPreviewDocument,
   clampSplitPercent,
+  normalizePreviewNonce,
   parseSettingPath,
   readLocalMediaFileAsDataUrl,
 } from "@/app/components/[id]/sandbox/sandbox-helpers";
@@ -122,6 +124,7 @@ async function prepareThumbnailUploadFileOnDemand(file: File) {
 }
 
 export function UploadForm({ onUploaded, previewNonce }: UploadFormProps) {
+  const [resolvedPreviewNonce, setResolvedPreviewNonce] = useState<string | null>(() => normalizePreviewNonce(previewNonce));
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [requestId, setRequestId] = useState<string | null>(null);
@@ -171,8 +174,12 @@ export function UploadForm({ onUploaded, previewNonce }: UploadFormProps) {
   const mediaSelectionVersionByPathRef = useRef<Map<string, number>>(new Map());
 
   const previewDocument = useMemo(
-    () => buildPreviewDocument(previewHtml, previewNonce),
-    [previewHtml, previewNonce],
+    () => buildPreviewDocument(previewHtml, resolvedPreviewNonce),
+    [previewHtml, resolvedPreviewNonce],
+  );
+  const getFullPreviewDocument = useCallback(
+    () => buildFullPreviewDocument(previewHtml, resolvedPreviewNonce),
+    [previewHtml, resolvedPreviewNonce],
   );
   const workspaceStyle = useMemo(
     () =>
@@ -265,6 +272,25 @@ export function UploadForm({ onUploaded, previewNonce }: UploadFormProps) {
 
     return (blockCountByType.get(definition.type) ?? 0) < definition.limit;
   }, [blockCountByType, blockDefinitionByType, pendingBlockType, schema]);
+
+  useEffect(() => {
+    const explicitNonce = normalizePreviewNonce(previewNonce);
+    if (explicitNonce) {
+      setResolvedPreviewNonce((current) => (current === explicitNonce ? current : explicitNonce));
+      return;
+    }
+
+    const documentNonce = normalizePreviewNonce(
+      typeof document !== "undefined"
+        ? document.querySelector('meta[name="pressplay-nonce"]')?.getAttribute("content")
+          ?? document.body?.getAttribute("data-pressplay-nonce")
+        : null,
+    );
+
+    if (documentNonce) {
+      setResolvedPreviewNonce((current) => (current === documentNonce ? current : documentNonce));
+    }
+  }, [previewNonce]);
 
   function clearPreviewDebounceTimer() {
     if (previewDebounceTimerRef.current === null) {
@@ -1368,7 +1394,7 @@ export function UploadForm({ onUploaded, previewNonce }: UploadFormProps) {
             {previewError ?? "Liquid schema parsing failed."}
           </div>
         ) : (
-          <div className="mt-3 h-[62rem] min-h-[36rem]">
+          <div className="mt-3 h-[48rem] min-h-[32rem]">
             <SandboxWorkspace
               workspaceRef={workspaceRef}
               workspaceStyle={workspaceStyle}
@@ -1385,6 +1411,8 @@ export function UploadForm({ onUploaded, previewNonce }: UploadFormProps) {
               blockSettingLookupByType={blockSettingLookupByType}
               previewError={previewError}
               iframeDocument={previewDocument}
+              getFullPreviewDocument={getFullPreviewDocument}
+              previewTitle={localLiquidFileName ?? (titleValue || "Admin Preview")}
               previewMode={previewMode}
               fitPreviewToContent={fitPreviewToContent}
               onPreviewModeChange={setPreviewMode}
@@ -1395,7 +1423,6 @@ export function UploadForm({ onUploaded, previewNonce }: UploadFormProps) {
               onRemoveBlock={handleRemoveBlock}
               onSettingValueChange={handleSettingValueChange}
               onSelectLocalMedia={handleSelectLocalMedia}
-              previewViewportAspectRatio="4 / 3"
               onSplitterPointerDown={handleSplitterPointerDown}
               onSplitterKeyDown={handleSplitterKeyDown}
             />

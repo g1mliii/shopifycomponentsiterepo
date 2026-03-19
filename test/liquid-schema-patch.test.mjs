@@ -28,7 +28,14 @@ const SOURCE = `{% assign heading = section.settings.heading %}
     }
   ],
   "presets": [
-    { "name": "Default", "blocks": [{ "type": "slide" }] }
+    {
+      "name": "Default",
+      "settings": {
+        "heading": "Preset heading",
+        "padding": 24
+      },
+      "blocks": [{ "type": "slide" }]
+    }
   ]
 }
 {% endschema %}`;
@@ -59,6 +66,8 @@ test("patchLiquidSchemaDefaults updates defaults while preserving non-schema mar
   assert.ok(parsed.schema);
 
   const state = buildInitialEditorState(parsed.schema);
+  assert.equal(state.sectionSettings.heading, "Preset heading");
+  assert.equal(state.sectionSettings.padding, 24);
   state.sectionSettings.heading = "Updated heading";
   state.sectionSettings.padding = 28;
   state.blocks[0].settings.title = "Updated slide title";
@@ -68,6 +77,7 @@ test("patchLiquidSchemaDefaults updates defaults while preserving non-schema mar
   assert.match(patched, /"id": "heading"[\s\S]*"default": "Updated heading"/);
   assert.match(patched, /"id": "padding"[\s\S]*"default": 28/);
   assert.match(patched, /"id": "title"[\s\S]*"default": "Updated slide title"/);
+  assert.match(patched, /"settings": \{[\s\S]*"heading": "Updated heading"[\s\S]*"padding": 28/);
   assert.match(patched, /<h2>{{ heading }}<\/h2>/);
 });
 

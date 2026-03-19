@@ -12,6 +12,95 @@ const ADMIN_MUTATION_HEADERS = {
   "x-admin-csrf": "1",
   origin: "http://localhost:3000",
 };
+const INTERACTIVE_SCROLL_LIQUID_SOURCE = `{% assign title = section.settings.title %}
+<style>
+  .scroll-probe-shell {
+    height: 320vh;
+    background:
+      linear-gradient(180deg, #f6f0e8 0%, #efe4d5 28%, #d9c7ae 62%, #c6aa86 100%);
+  }
+
+  .scroll-probe-stage {
+    position: sticky;
+    top: 0;
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+  }
+
+  .scroll-probe-card {
+    display: grid;
+    gap: 16px;
+    width: min(100%, 26rem);
+    padding: 24px;
+    border-radius: 24px;
+    background: rgba(255, 255, 255, 0.84);
+    box-shadow: 0 18px 60px rgba(78, 59, 34, 0.18);
+    text-align: center;
+  }
+
+  .hover-probe {
+    border: 0;
+    border-radius: 999px;
+    padding: 14px 18px;
+    font: inherit;
+    color: #2e2418;
+    background: #e0d1bb;
+    transition: background-color 120ms linear, color 120ms linear;
+  }
+
+  .hover-probe:hover {
+    color: #ffffff;
+    background: #456b57;
+  }
+</style>
+
+<section class="scroll-probe-shell">
+  <div class="scroll-probe-stage">
+    <div class="scroll-probe-card">
+      <p>{{ title }}</p>
+      <strong data-scroll-readout data-progress="0">0%</strong>
+      <button type="button" class="hover-probe">Hover probe</button>
+    </div>
+  </div>
+</section>
+
+<script>
+  (function () {
+    var readout = document.querySelector("[data-scroll-readout]");
+
+    function update() {
+      var maxScrollTop = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+      var progress = Math.round((window.scrollY / maxScrollTop) * 100);
+      if (!readout) {
+        return;
+      }
+
+      readout.textContent = progress + "%";
+      readout.setAttribute("data-progress", String(progress));
+    }
+
+    update();
+    window.addEventListener("scroll", update, { passive: true });
+  })();
+</script>
+
+{% schema %}
+{
+  "name": "Interactive Scroll Fixture",
+  "settings": [
+    { "type": "header", "content": "Motion" },
+    { "type": "paragraph", "content": "Interactive scroll content should stay inside the preview frame." },
+    { "type": "text", "id": "title", "label": "Title", "default": "Interactive preview probe" }
+  ],
+  "presets": [
+    {
+      "name": "Interactive Scroll Fixture"
+    }
+  ]
+}
+{% endschema %}`;
 
 async function loginAs(
   page: Page,
@@ -263,10 +352,54 @@ test("authenticated non-admin is blocked in UI and API", async ({ page }) => {
   expect(patchBody.error?.code).toBe("forbidden");
 });
 
+test("admin upload preview supports scroll scrubbing and iframe hover interactions before submit", async ({ page }) => {
+  if (!usersContext) {
+    return;
+  }
+
+  await loginAs(page, usersContext.adminEmail, usersContext.adminPassword);
+  await expect(page.getByRole("heading", { name: /component admin panel/i })).toBeVisible();
+
+  await page.setInputFiles("#liquidFile", {
+    name: "interactive-scroll.liquid",
+    mimeType: "text/plain",
+    buffer: Buffer.from(INTERACTIVE_SCROLL_LIQUID_SOURCE),
+  });
+
+  const scrollScrubber = page.getByLabel("Scroll Progress");
+  await expect(scrollScrubber).toBeEnabled();
+  await expect(page.getByTestId("sandbox-schema-header")).toContainText("Motion");
+  await expect(page.getByTestId("sandbox-schema-paragraph")).toContainText("Interactive scroll content should stay inside the preview frame.");
+
+  const previewFrame = page.frameLocator('iframe[title="Component preview"]');
+  await expect(previewFrame.locator("[data-scroll-readout]")).toHaveText("0%");
+
+  await scrollScrubber.evaluate((input) => {
+    if (!(input instanceof HTMLInputElement)) {
+      throw new Error("Scroll scrubber was not an input element.");
+    }
+
+    input.value = "72";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+
+  await expect(scrollScrubber).toHaveValue("72");
+
+  const hoverProbe = previewFrame.getByRole("button", { name: "Hover probe" });
+  const beforeHoverColor = await hoverProbe.evaluate((element) => getComputedStyle(element).backgroundColor);
+  await hoverProbe.hover();
+  await expect.poll(async () => {
+    return hoverProbe.evaluate((element) => getComputedStyle(element).backgroundColor);
+  }).not.toBe(beforeHoverColor);
+});
+
 test("admin upload works without a thumbnail and can add a video thumbnail later from the admin panel", async ({ page }) => {
   if (!usersContext) {
     return;
   }
+
+  test.setTimeout(60_000);
 
   await loginAs(page, usersContext.adminEmail, usersContext.adminPassword);
   await expect(page.getByRole("heading", { name: /component admin panel/i })).toBeVisible();

@@ -5,6 +5,7 @@ const UPLOAD_BLOCKING_DIAGNOSTIC_CODES = new Set<string>([
   "duplicate_block_type",
   "unknown_section_setting_reference",
   "unknown_block_setting_reference",
+  "unknown_preset_section_setting",
   "unknown_preset_block_type",
   "unknown_preset_block_setting",
 ]);
@@ -26,8 +27,12 @@ function formatDiagnosticLabel(code: string): string {
     return "Liquid references that are missing from the schema";
   }
 
-  if (code === "unknown_preset_block_type" || code === "unknown_preset_block_setting") {
-    return "preset blocks that do not match the schema";
+  if (
+    code === "unknown_preset_section_setting"
+    || code === "unknown_preset_block_type"
+    || code === "unknown_preset_block_setting"
+  ) {
+    return "preset values that do not match the schema";
   }
 
   return "schema issues";

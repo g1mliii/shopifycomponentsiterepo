@@ -53,7 +53,7 @@ test("parseLiquidSchema reports malformed schema JSON", () => {
   assert.ok(result.diagnostics.some((entry) => entry.code === "schema_json_invalid"));
 });
 
-test("parseLiquidSchema ignores header and paragraph pseudo-settings without id warnings", () => {
+test("parseLiquidSchema preserves header and paragraph schema entries without id warnings", () => {
   const source = `{% schema %}
 {
   "name": "Pseudo setting test",
@@ -69,6 +69,14 @@ test("parseLiquidSchema ignores header and paragraph pseudo-settings without id 
 
   assert.ok(result.schema);
   assert.equal(result.schema?.settings.length, 1);
+  assert.equal(result.schema?.editorEntries.length, 3);
+  assert.equal(result.schema?.editorEntries[0]?.kind, "presentation");
+  assert.equal(result.schema?.editorEntries[1]?.kind, "presentation");
+  assert.equal(result.schema?.editorEntries[2]?.kind, "setting");
+  assert.equal(result.schema?.editorEntries[0]?.presentation.type, "header");
+  assert.equal(result.schema?.editorEntries[0]?.presentation.content, "General");
+  assert.equal(result.schema?.editorEntries[1]?.presentation.type, "paragraph");
+  assert.equal(result.schema?.editorEntries[1]?.presentation.content, "Description text");
   assert.equal(result.schema?.settings[0]?.id, "headline");
   assert.equal(
     result.diagnostics.some((entry) => entry.code === "missing_setting_id"),
@@ -253,6 +261,39 @@ test("parseLiquidSchema warns when block types are duplicated or presets do not 
       (entry) =>
         entry.code === "unknown_preset_block_type"
         && entry.path === "presets[0].blocks[1].type",
+    ),
+    true,
+  );
+});
+
+test("parseLiquidSchema warns when preset section settings do not match the schema", () => {
+  const source = `{% schema %}
+{
+  "name": "Preset section mismatch",
+  "settings": [
+    { "type": "text", "id": "heading", "label": "Heading", "default": "Welcome" }
+  ],
+  "presets": [
+    {
+      "name": "Default",
+      "settings": {
+        "heading": "Preset heading",
+        "missing_setting": "Oops"
+      }
+    }
+  ]
+}
+{% endschema %}`;
+
+  const result = parseLiquidSchema(source);
+
+  assert.ok(result.schema);
+  assert.equal(result.schema?.presets[0]?.settings.heading, "Preset heading");
+  assert.equal(
+    result.diagnostics.some(
+      (entry) =>
+        entry.code === "unknown_preset_section_setting"
+        && entry.path === "presets[0].settings.missing_setting",
     ),
     true,
   );

@@ -95,6 +95,9 @@ test("getUploadBlockingSchemaDiagnostics treats schema/reference mismatches as b
   "presets": [
     {
       "name": "Default",
+      "settings": {
+        "missing_setting": "Oops"
+      },
       "blocks": [
         { "type": "cta", "settings": { "missing_setting": "Oops" } }
       ]
@@ -111,6 +114,7 @@ test("getUploadBlockingSchemaDiagnostics treats schema/reference mismatches as b
   assert.equal(blockingCodes.has("unknown_section_setting_reference"), true);
   assert.equal(blockingCodes.has("unknown_block_setting_reference"), true);
   assert.equal(blockingCodes.has("duplicate_block_type"), true);
+  assert.equal(blockingCodes.has("unknown_preset_section_setting"), true);
   assert.equal(blockingCodes.has("unknown_preset_block_setting"), true);
   assert.match(
     getUploadBlockingSchemaMessage(parsed.diagnostics) ?? "",

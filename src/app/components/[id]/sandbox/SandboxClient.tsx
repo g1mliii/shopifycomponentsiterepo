@@ -22,8 +22,10 @@ import {
   type PreviewMode,
   applyMediaOverrides,
   buildPreviewDocument,
+  buildFullPreviewDocument,
   clampSplitPercent,
   createAbortError,
+  normalizePreviewNonce,
   parseSettingPath,
   readLocalMediaFileAsDataUrl,
   toTitleSlug,
@@ -135,6 +137,7 @@ async function loadLiquidSourceText(componentId: string, signal: AbortSignal): P
 }
 
 export function SandboxClient({ component, previewNonce }: SandboxClientProps) {
+  const [resolvedPreviewNonce, setResolvedPreviewNonce] = useState<string | null>(() => normalizePreviewNonce(previewNonce));
   const [isPendingTransition, startTransition] = useTransition();
   const [source, setSource] = useState<string | null>(null);
   const [schema, setSchema] = useState<LiquidSchema | null>(null);
@@ -171,6 +174,25 @@ export function SandboxClient({ component, previewNonce }: SandboxClientProps) {
   useEffect(() => {
     mediaOverridesRef.current = mediaOverrides;
   }, [mediaOverrides]);
+
+  useEffect(() => {
+    const explicitNonce = normalizePreviewNonce(previewNonce);
+    if (explicitNonce) {
+      setResolvedPreviewNonce((current) => (current === explicitNonce ? current : explicitNonce));
+      return;
+    }
+
+    const documentNonce = normalizePreviewNonce(
+      typeof document !== "undefined"
+        ? document.querySelector('meta[name="pressplay-nonce"]')?.getAttribute("content")
+          ?? document.body?.getAttribute("data-pressplay-nonce")
+        : null,
+    );
+
+    if (documentNonce) {
+      setResolvedPreviewNonce((current) => (current === documentNonce ? current : documentNonce));
+    }
+  }, [previewNonce]);
 
   const blockDefinitionByType = useMemo(() => {
     const map = new Map<string, LiquidSchema["blocks"][number]>();
@@ -214,8 +236,12 @@ export function SandboxClient({ component, previewNonce }: SandboxClientProps) {
   }, [editorState, mediaOverrides, schema]);
 
   const iframeDocument = useMemo(
-    () => buildPreviewDocument(previewHtml, previewNonce),
-    [previewHtml, previewNonce],
+    () => buildPreviewDocument(previewHtml, resolvedPreviewNonce),
+    [previewHtml, resolvedPreviewNonce],
+  );
+  const getFullPreviewDocument = useCallback(
+    () => buildFullPreviewDocument(previewHtml, resolvedPreviewNonce),
+    [previewHtml, resolvedPreviewNonce],
   );
 
   const sectionUnsupportedSettingsCount = useMemo(() => {
@@ -854,6 +880,8 @@ export function SandboxClient({ component, previewNonce }: SandboxClientProps) {
             blockSettingLookupByType={blockSettingLookupByType}
             previewError={previewError}
             iframeDocument={iframeDocument}
+            getFullPreviewDocument={getFullPreviewDocument}
+            previewTitle={component.title}
             previewMode={previewMode}
             fitPreviewToContent={fitPreviewToContent}
             onPreviewModeChange={setPreviewMode}

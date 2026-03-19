@@ -16,21 +16,6 @@ function escapeHtmlAttribute(value: string): string {
     .replaceAll(">", "&gt;");
 }
 
-function applyNonceToPreviewScripts(html: string, nonce: string | null | undefined): string {
-  if (!nonce) {
-    return html;
-  }
-
-  const escapedNonce = escapeHtmlAttribute(nonce);
-  return html.replace(/<script\b([^>]*)>/gi, (match, attributes: string) => {
-    if (/\bnonce\s*=/.test(attributes)) {
-      return match;
-    }
-
-    return `<script nonce="${escapedNonce}"${attributes}>`;
-  });
-}
-
 function normalizeInlinePreviewHandlers(html: string): string {
   let normalizedHtml = html.replace(
     /\s+onclick="document\.getElementById\('([^']+)'\)\.scrollBy\(\{left:\s*(-?\d+),\s*behavior:\s*'smooth'\}\)"/gi,
@@ -47,191 +32,50 @@ function normalizeInlinePreviewHandlers(html: string): string {
   return normalizedHtml;
 }
 
-export function toTitleSlug(value: string): string {
-  const normalized = value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-  return normalized.length > 0 ? normalized.slice(0, 64) : "component";
+type ExtractedPreviewScripts = {
+  htmlWithoutScripts: string;
+  inlineScripts: string[];
+};
+
+function extractInlinePreviewScripts(html: string): ExtractedPreviewScripts {
+  const inlineScripts: string[] = [];
+  const htmlWithoutScripts = html.replace(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi, (_match, attributes: string, code: string) => {
+    if (/\bsrc\s*=/.test(attributes)) {
+      return "";
+    }
+
+    inlineScripts.push(code);
+    return "";
+  });
+
+  return {
+    htmlWithoutScripts,
+    inlineScripts,
+  };
 }
 
-export function buildPreviewDocument(html: string, nonce?: string | null): string {
-  const escapedNonce = nonce ? escapeHtmlAttribute(nonce) : null;
-  const scriptPolicy = escapedNonce
+function getPreviewScriptPolicy(escapedNonce: string | null): string {
+  return escapedNonce
     ? `script-src 'unsafe-inline' 'nonce-${escapedNonce}'`
     : "script-src 'unsafe-inline'";
-  const previewHtml = applyNonceToPreviewScripts(normalizeInlinePreviewHandlers(html), escapedNonce);
-  const previewScriptNonceAttribute = escapedNonce ? ` nonce="${escapedNonce}"` : "";
+}
 
-  return `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta
-      http-equiv="Content-Security-Policy"
-      content="default-src 'none'; ${scriptPolicy}; style-src 'unsafe-inline' https: http:; img-src data: blob: https: http:; media-src data: blob: https: http:; font-src data: https: http:; connect-src 'none'; frame-src 'none'; child-src 'none'; worker-src 'none'; manifest-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none';"
-    />
-    <style>
-      :root { color-scheme: light; }
-      html, body {
-        width: 100%;
-        max-width: 100%;
-        overflow-x: hidden;
-      }
-      body {
-        margin: 0;
-        padding: 16px;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-        color: #111827;
-        background: #ffffff;
-      }
-      #pressplay-preview-root {
-        transform-origin: top center;
-      }
-      #pressplay-preview-root :where(img, video, iframe, svg, canvas) {
-        max-width: 100%;
-        height: auto;
-      }
-      img, video { max-width: 100%; height: auto; }
-    </style>
-  </head>
-  <body>
-    <div id="pressplay-preview-root">${previewHtml}</div>
-    <script${previewScriptNonceAttribute}>
+function getNormalizedPreviewHtml(html: string): ExtractedPreviewScripts {
+  return extractInlinePreviewScripts(normalizeInlinePreviewHandlers(html));
+}
+
+function buildPreviewCsp(scriptPolicy: string): string {
+  return `default-src 'none'; ${scriptPolicy}; style-src 'unsafe-inline' https: http:; img-src data: blob: https: http:; media-src data: blob: https: http:; font-src data: https: http:; connect-src 'none'; frame-src 'none'; child-src 'none'; worker-src 'none'; manifest-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none';`;
+}
+
+function buildPreviewInteractionScript(previewScriptNonceAttribute: string, rootSelector: string | null): string {
+  const rootLookup = rootSelector
+    ? `var root = document.querySelector(${JSON.stringify(rootSelector)});\n        if (!root) {\n          return;\n        }\n`
+    : "var root = document.body;\n";
+
+  return `<script${previewScriptNonceAttribute}>
       (function () {
-        var root = document.getElementById("pressplay-preview-root");
-        if (!root) {
-          return;
-        }
-
-        var rafId = 0;
-        var deferredFitTimerId = 0;
-        var resizeObserver = null;
-        var mutationObserver = null;
-        var lastViewportWidth = 0;
-        var lastContentWidth = 0;
-        var lastContentHeight = 0;
-        var lastScale = 0;
-
-        function applyFitScale() {
-          rafId = 0;
-          root.style.transform = "";
-          root.style.width = "auto";
-          root.style.margin = "";
-
-          var viewportWidth = Math.max(320, window.innerWidth - 24);
-          var contentWidth = Math.max(1, root.scrollWidth);
-          var contentHeight = Math.max(1, root.scrollHeight);
-          var widthScale = viewportWidth / contentWidth;
-          var scale = Math.min(1, widthScale);
-
-          if (
-            viewportWidth === lastViewportWidth
-            && contentWidth === lastContentWidth
-            && contentHeight === lastContentHeight
-            && scale === lastScale
-          ) {
-            return;
-          }
-
-          lastViewportWidth = viewportWidth;
-          lastContentWidth = contentWidth;
-          lastContentHeight = contentHeight;
-          lastScale = scale;
-
-          if (scale >= 0.999) {
-            document.body.style.minHeight = contentHeight + 24 + "px";
-            reportPreviewMetrics();
-            return;
-          }
-
-          root.style.width = contentWidth + "px";
-          root.style.transform = "scale(" + scale + ")";
-          root.style.margin = "0 auto";
-          var scaledHeight = Math.ceil(contentHeight * scale);
-          document.body.style.minHeight = scaledHeight + 24 + "px";
-          reportPreviewMetrics();
-        }
-
-        function reportPreviewMetrics() {
-          if (!window.parent || window.parent === window) {
-            return;
-          }
-
-          var elements = root.querySelectorAll("*");
-          var minTop = Number.POSITIVE_INFINITY;
-          var maxBottom = Number.NEGATIVE_INFINITY;
-          var maxRight = Number.NEGATIVE_INFINITY;
-
-          for (var index = 0; index < elements.length; index += 1) {
-            var element = elements[index];
-            if (!(element instanceof HTMLElement)) {
-              continue;
-            }
-
-            var rect = element.getBoundingClientRect();
-            if (rect.width <= 0 && rect.height <= 0) {
-              continue;
-            }
-
-            minTop = Math.min(minTop, rect.top);
-            maxBottom = Math.max(maxBottom, rect.bottom);
-            maxRight = Math.max(maxRight, rect.right);
-          }
-
-          var rootRect = root.getBoundingClientRect();
-          var visualTop = Number.isFinite(minTop) ? Math.min(minTop, rootRect.top) : rootRect.top;
-          var visualBottom = Number.isFinite(maxBottom) ? Math.max(maxBottom, rootRect.bottom) : rootRect.bottom;
-          var visualRight = Number.isFinite(maxRight) ? Math.max(maxRight, rootRect.right) : rootRect.right;
-
-          window.parent.postMessage({
-            type: "pressplay-preview-metrics",
-            visualHeight: Math.max(1, Math.ceil(visualBottom - visualTop)),
-            visualWidth: Math.max(1, Math.ceil(visualRight - rootRect.left)),
-            flowHeight: Math.max(1, Math.ceil(root.scrollHeight)),
-            scale: lastScale || 1,
-          }, "*");
-        }
-
-        function queueFitScale() {
-          if (rafId !== 0) {
-            return;
-          }
-
-          rafId = window.requestAnimationFrame(applyFitScale);
-        }
-
-        function queueDeferredFitScale() {
-          if (deferredFitTimerId !== 0) {
-            window.clearTimeout(deferredFitTimerId);
-          }
-
-          deferredFitTimerId = window.setTimeout(function () {
-            deferredFitTimerId = 0;
-            queueFitScale();
-          }, 48);
-        }
-
-        window.addEventListener("resize", queueFitScale, { passive: true });
-
-        if (typeof ResizeObserver === "function") {
-          resizeObserver = new ResizeObserver(queueFitScale);
-          resizeObserver.observe(document.documentElement);
-          resizeObserver.observe(root);
-        }
-
-        if (typeof MutationObserver === "function") {
-          mutationObserver = new MutationObserver(queueDeferredFitScale);
-          mutationObserver.observe(root, {
-            childList: true,
-            subtree: true,
-          });
-        }
-
-        if (document.readyState === "complete") {
-          queueFitScale();
-        } else {
-          window.addEventListener("load", queueFitScale, { once: true });
-        }
-
+        ${rootLookup}
         document.addEventListener("click", function (event) {
           var target = event.target;
           if (!(target instanceof Element)) {
@@ -268,6 +112,419 @@ export function buildPreviewDocument(html: string, nonce?: string | null): strin
             toggleTrigger.parentElement.classList.toggle(className);
           }
         });
+      })();
+    </script>`;
+}
+
+function buildPreviewInlineScriptBootstrap(
+  inlineScripts: string[],
+  escapedNonce: string | null,
+): string {
+  const serializedInlineScripts = JSON.stringify(inlineScripts);
+  const nonceAssignment = escapedNonce
+    ? `script.setAttribute("nonce", ${JSON.stringify(escapedNonce)});`
+    : "";
+
+  return `
+        var previewInlineScripts = ${serializedInlineScripts};
+
+        function runPreviewInlineScripts() {
+          if (!Array.isArray(previewInlineScripts) || previewInlineScripts.length === 0) {
+            return;
+          }
+
+          for (var index = 0; index < previewInlineScripts.length; index += 1) {
+            var scriptContent = previewInlineScripts[index];
+            if (typeof scriptContent !== "string" || scriptContent.length === 0) {
+              continue;
+            }
+
+            var script = document.createElement("script");
+            ${nonceAssignment}
+            script.textContent = scriptContent;
+            document.body.appendChild(script);
+          }
+        }
+`;
+}
+
+export function toTitleSlug(value: string): string {
+  const normalized = value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return normalized.length > 0 ? normalized.slice(0, 64) : "component";
+}
+
+export function buildPreviewDocument(html: string, nonce?: string | null): string {
+  const escapedNonce = nonce ? escapeHtmlAttribute(nonce) : null;
+  const scriptPolicy = getPreviewScriptPolicy(escapedNonce);
+  const { htmlWithoutScripts: previewHtml, inlineScripts } = getNormalizedPreviewHtml(html);
+  const previewScriptNonceAttribute = escapedNonce ? ` nonce="${escapedNonce}"` : "";
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="${buildPreviewCsp(scriptPolicy)}"
+    />
+    <style>
+      :root { color-scheme: light; }
+      html, body {
+        width: 100%;
+        min-height: 100%;
+        max-width: 100%;
+        overflow-x: hidden;
+      }
+      body {
+        margin: 0;
+        padding: 16px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        color: #111827;
+        background: #ffffff;
+      }
+      #pressplay-preview-root {
+        transform-origin: top center;
+      }
+      #pressplay-preview-root :where(img, video, iframe, svg, canvas) {
+        max-width: 100%;
+        height: auto;
+      }
+      img, video { max-width: 100%; height: auto; }
+    </style>
+  </head>
+  <body>
+    <div id="pressplay-preview-root">${previewHtml}</div>
+    <script${previewScriptNonceAttribute}>
+      (function () {
+        var root = document.getElementById("pressplay-preview-root");
+        if (!root) {
+          return;
+        }
+
+        var rafId = 0;
+        var metricsRafId = 0;
+        var deferredFitTimerId = 0;
+        var resizeObserver = null;
+        var mutationObserver = null;
+        var lastViewportWidth = 0;
+        var lastContentWidth = 0;
+        var lastContentHeight = 0;
+        var lastViewportLockedLayout = false;
+        var lastScale = 0;
+        var lastVisualHeight = 1;
+        var lastVisualWidth = 1;
+        var lastFlowHeight = 1;
+        var lastViewportLockedMetrics = false;
+        var lastReportedMetricsKey = "";
+${buildPreviewInlineScriptBootstrap(inlineScripts, escapedNonce)}
+
+        function clamp(value, min, max) {
+          return Math.min(max, Math.max(min, value));
+        }
+
+        function getScrollingElement() {
+          return document.scrollingElement || document.documentElement || document.body;
+        }
+
+        function getScrollMetrics() {
+          var scrollingElement = getScrollingElement();
+          var maxScrollTop = Math.max(0, scrollingElement.scrollHeight - window.innerHeight);
+          var scrollTop = maxScrollTop > 0
+            ? clamp(scrollingElement.scrollTop || window.scrollY || 0, 0, maxScrollTop)
+            : 0;
+
+          return {
+            scrollTop: scrollTop,
+            maxScrollTop: maxScrollTop,
+            viewportHeight: window.innerHeight
+          };
+        }
+
+        function hasViewportLockedLayout() {
+          var elements = root.querySelectorAll("*");
+          for (var index = 0; index < elements.length; index += 1) {
+            var element = elements[index];
+            if (!(element instanceof HTMLElement)) {
+              continue;
+            }
+
+            var computedStyle = window.getComputedStyle(element);
+            if (computedStyle.position === "sticky" || computedStyle.position === "fixed") {
+              return true;
+            }
+          }
+
+          return false;
+        }
+
+        function findViewportBackground() {
+          var elements = [root].concat(Array.prototype.slice.call(root.querySelectorAll("*")));
+          for (var index = 0; index < elements.length; index += 1) {
+            var element = elements[index];
+            if (!(element instanceof HTMLElement)) {
+              continue;
+            }
+
+            var computedStyle = window.getComputedStyle(element);
+            var backgroundColor = computedStyle.backgroundColor;
+            if (
+              backgroundColor
+              && backgroundColor !== "rgba(0, 0, 0, 0)"
+              && backgroundColor !== "transparent"
+            ) {
+              return backgroundColor;
+            }
+          }
+
+          return "#ffffff";
+        }
+
+        function measureVisualMetrics() {
+          var elements = root.querySelectorAll("*");
+          var minTop = Number.POSITIVE_INFINITY;
+          var maxBottom = Number.NEGATIVE_INFINITY;
+          var maxRight = Number.NEGATIVE_INFINITY;
+
+          for (var index = 0; index < elements.length; index += 1) {
+            var element = elements[index];
+            if (!(element instanceof HTMLElement)) {
+              continue;
+            }
+
+            var rect = element.getBoundingClientRect();
+            if (rect.width <= 0 && rect.height <= 0) {
+              continue;
+            }
+
+            minTop = Math.min(minTop, rect.top);
+            maxBottom = Math.max(maxBottom, rect.bottom);
+            maxRight = Math.max(maxRight, rect.right);
+          }
+
+          var rootRect = root.getBoundingClientRect();
+          var visualTop = Number.isFinite(minTop) ? Math.min(minTop, rootRect.top) : rootRect.top;
+          var visualBottom = Number.isFinite(maxBottom) ? Math.max(maxBottom, rootRect.bottom) : rootRect.bottom;
+          var visualRight = Number.isFinite(maxRight) ? Math.max(maxRight, rootRect.right) : rootRect.right;
+          lastVisualHeight = Math.max(1, Math.ceil(visualBottom - visualTop));
+          lastVisualWidth = Math.max(1, Math.ceil(visualRight - rootRect.left));
+          lastFlowHeight = Math.max(1, Math.ceil(root.scrollHeight));
+        }
+
+        function applyFitScale() {
+          rafId = 0;
+          root.style.transform = "";
+          root.style.width = "auto";
+          root.style.margin = "";
+          root.style.minHeight = "";
+          document.body.style.minHeight = "";
+          document.body.style.padding = "16px";
+          document.body.style.background = "#ffffff";
+
+          var viewportWidth = Math.max(320, window.innerWidth - 24);
+          var contentWidth = Math.max(1, root.scrollWidth);
+          var contentHeight = Math.max(1, root.scrollHeight);
+          var viewportLockedLayout = hasViewportLockedLayout();
+          var widthScale = viewportWidth / contentWidth;
+          var scale = viewportLockedLayout ? 1 : Math.min(1, widthScale);
+
+          if (
+            viewportWidth === lastViewportWidth
+            && contentWidth === lastContentWidth
+            && contentHeight === lastContentHeight
+            && viewportLockedLayout === lastViewportLockedLayout
+            && scale === lastScale
+          ) {
+            return;
+          }
+
+          lastViewportWidth = viewportWidth;
+          lastContentWidth = contentWidth;
+          lastContentHeight = contentHeight;
+          lastViewportLockedLayout = viewportLockedLayout;
+          lastViewportLockedMetrics = viewportLockedLayout;
+          lastScale = scale;
+
+          if (viewportLockedLayout) {
+            document.body.style.padding = "0";
+            document.body.style.background = findViewportBackground();
+            root.style.width = "100%";
+            root.style.minHeight = "100vh";
+            document.body.style.minHeight = "";
+            measureVisualMetrics();
+            reportPreviewMetrics();
+            return;
+          }
+
+          if (scale >= 0.999) {
+            document.body.style.minHeight = contentHeight + 24 + "px";
+            measureVisualMetrics();
+            reportPreviewMetrics();
+            return;
+          }
+
+          root.style.width = contentWidth + "px";
+          root.style.transform = "scale(" + scale + ")";
+          root.style.margin = "0 auto";
+          var scaledHeight = Math.ceil(contentHeight * scale);
+          document.body.style.minHeight = scaledHeight + 24 + "px";
+          measureVisualMetrics();
+          reportPreviewMetrics();
+        }
+
+        function reportPreviewMetrics() {
+          if (!window.parent || window.parent === window) {
+            return;
+          }
+
+          var scrollMetrics = getScrollMetrics();
+          var metricsKey = [
+            lastVisualHeight,
+            lastVisualWidth,
+            lastFlowHeight,
+            lastScale || 1,
+            Math.ceil(scrollMetrics.scrollTop),
+            Math.ceil(scrollMetrics.maxScrollTop),
+            Math.ceil(scrollMetrics.viewportHeight)
+          ].join(":");
+
+          if (metricsKey === lastReportedMetricsKey) {
+            return;
+          }
+
+          lastReportedMetricsKey = metricsKey;
+
+          window.parent.postMessage({
+            type: "pressplay-preview-metrics",
+            visualHeight: lastVisualHeight,
+            visualWidth: lastVisualWidth,
+            flowHeight: lastFlowHeight,
+            scale: lastScale || 1,
+            scrollTop: Math.ceil(scrollMetrics.scrollTop),
+            maxScrollTop: Math.ceil(scrollMetrics.maxScrollTop),
+            viewportHeight: Math.ceil(scrollMetrics.viewportHeight),
+            viewportLockedLayout: lastViewportLockedMetrics,
+          }, "*");
+        }
+
+        function queueFitScale() {
+          if (rafId !== 0) {
+            return;
+          }
+
+          rafId = window.requestAnimationFrame(applyFitScale);
+        }
+
+        function queueMetricsReport() {
+          if (metricsRafId !== 0) {
+            return;
+          }
+
+          metricsRafId = window.requestAnimationFrame(function () {
+            metricsRafId = 0;
+            reportPreviewMetrics();
+          });
+        }
+
+        function queueDeferredFitScale() {
+          if (deferredFitTimerId !== 0) {
+            window.clearTimeout(deferredFitTimerId);
+          }
+
+          deferredFitTimerId = window.setTimeout(function () {
+            deferredFitTimerId = 0;
+            queueFitScale();
+          }, 48);
+        }
+
+        function applyPreviewState(message) {
+          if (!message || message.type !== "pressplay-preview-set-state") {
+            return;
+          }
+
+          if (typeof message.scrollProgress === "number" && Number.isFinite(message.scrollProgress)) {
+            var scrollMetrics = getScrollMetrics();
+            if (scrollMetrics.maxScrollTop <= 0) {
+              window.scrollTo({ top: 0, behavior: "auto" });
+              queueMetricsReport();
+              return;
+            }
+
+            var clampedProgress = clamp(message.scrollProgress, 0, 1);
+            var targetScrollTop = scrollMetrics.maxScrollTop * clampedProgress;
+            window.scrollTo({ top: targetScrollTop, behavior: "auto" });
+            queueMetricsReport();
+          }
+        }
+
+        function applyPreviewScrollDelta(message) {
+          if (!message || message.type !== "pressplay-preview-scroll-delta") {
+            return;
+          }
+
+          if (typeof message.deltaY !== "number" || !Number.isFinite(message.deltaY)) {
+            return;
+          }
+
+          var scrollMetrics = getScrollMetrics();
+          if (scrollMetrics.maxScrollTop <= 0) {
+            queueMetricsReport();
+            return;
+          }
+
+          var nextScrollTop = clamp(scrollMetrics.scrollTop + message.deltaY, 0, scrollMetrics.maxScrollTop);
+          window.scrollTo({ top: nextScrollTop, behavior: "auto" });
+          queueMetricsReport();
+        }
+
+        function applyPreviewMetricsRequest(message) {
+          if (!message || message.type !== "pressplay-preview-request-metrics") {
+            return;
+          }
+
+          lastReportedMetricsKey = "";
+          queueFitScale();
+          queueMetricsReport();
+        }
+
+        window.__pressplayPreview = {
+          applyState: applyPreviewState,
+          applyScrollDelta: applyPreviewScrollDelta,
+          requestMetrics: applyPreviewMetricsRequest,
+          getScrollMetrics: getScrollMetrics
+        };
+
+        window.addEventListener("resize", queueFitScale, { passive: true });
+        window.addEventListener("scroll", queueMetricsReport, { passive: true });
+        window.addEventListener("message", function (event) {
+          applyPreviewState(event.data);
+          applyPreviewScrollDelta(event.data);
+          applyPreviewMetricsRequest(event.data);
+        });
+
+        if (typeof ResizeObserver === "function") {
+          resizeObserver = new ResizeObserver(queueFitScale);
+          resizeObserver.observe(document.documentElement);
+          resizeObserver.observe(root);
+        }
+
+        if (typeof MutationObserver === "function") {
+          mutationObserver = new MutationObserver(queueDeferredFitScale);
+          mutationObserver.observe(root, {
+            childList: true,
+            subtree: true,
+          });
+        }
+
+        if (document.readyState === "complete") {
+          queueFitScale();
+          runPreviewInlineScripts();
+        } else {
+          window.addEventListener("load", function () {
+            queueFitScale();
+            runPreviewInlineScripts();
+          }, { once: true });
+        }
 
         window.requestAnimationFrame(queueFitScale);
 
@@ -275,6 +532,11 @@ export function buildPreviewDocument(html: string, nonce?: string | null): strin
           if (rafId !== 0) {
             window.cancelAnimationFrame(rafId);
             rafId = 0;
+          }
+
+          if (metricsRafId !== 0) {
+            window.cancelAnimationFrame(metricsRafId);
+            metricsRafId = 0;
           }
 
           if (deferredFitTimerId !== 0) {
@@ -292,8 +554,58 @@ export function buildPreviewDocument(html: string, nonce?: string | null): strin
         }, { once: true });
       })();
     </script>
+    ${buildPreviewInteractionScript(previewScriptNonceAttribute, "#pressplay-preview-root")}
   </body>
 </html>`;
+}
+
+export function buildFullPreviewDocument(html: string, nonce?: string | null): string {
+  const escapedNonce = nonce ? escapeHtmlAttribute(nonce) : null;
+  const scriptPolicy = getPreviewScriptPolicy(escapedNonce);
+  const { htmlWithoutScripts: previewHtml, inlineScripts } = getNormalizedPreviewHtml(html);
+  const previewScriptNonceAttribute = escapedNonce ? ` nonce="${escapedNonce}"` : "";
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="${buildPreviewCsp(scriptPolicy)}"
+    />
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        min-height: 100%;
+      }
+      body {
+        background: #ffffff;
+        color: #111827;
+      }
+    </style>
+  </head>
+  <body>
+    ${previewHtml}
+    <script${previewScriptNonceAttribute}>
+      (function () {
+${buildPreviewInlineScriptBootstrap(inlineScripts, escapedNonce)}
+        runPreviewInlineScripts();
+      })();
+    </script>
+    ${buildPreviewInteractionScript(previewScriptNonceAttribute, null)}
+  </body>
+</html>`;
+}
+
+export function normalizePreviewNonce(value: string | null | undefined): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
 }
 
 export function createAbortError(): Error {

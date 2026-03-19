@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { Fraunces, Nunito } from "next/font/google";
 import "./globals.css";
 
@@ -123,14 +124,24 @@ export const metadata: Metadata = {
   manifest: "/manifest.webmanifest",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const nonce = (await headers()).get("x-nonce")?.trim() || undefined;
+
   return (
     <html lang="en">
-      <body className={`${bodyFont.variable} ${displayFont.variable} antialiased`}>{children}</body>
+      <head>
+        {nonce ? <meta name="pressplay-nonce" content={nonce} /> : null}
+      </head>
+      <body
+        data-pressplay-nonce={nonce}
+        className={`${bodyFont.variable} ${displayFont.variable} antialiased`}
+      >
+        {children}
+      </body>
     </html>
   );
 }

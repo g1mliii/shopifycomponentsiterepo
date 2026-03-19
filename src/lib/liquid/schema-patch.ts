@@ -95,6 +95,15 @@ export function buildInitialEditorState(schema: LiquidSchema): LiquidEditorState
     sectionSettings[setting.id] = cloneJsonValue(setting.defaultValue);
   }
 
+  const firstPresetSettings = schema.presets[0]?.settings ?? {};
+  for (const setting of schema.settings) {
+    if (!(setting.id in firstPresetSettings)) {
+      continue;
+    }
+
+    sectionSettings[setting.id] = cloneJsonValue(firstPresetSettings[setting.id]);
+  }
+
   const blocks: LiquidBlockInstance[] = [];
   const firstPresetBlocks = schema.presets[0]?.blocks ?? [];
 
@@ -208,6 +217,7 @@ export function patchLiquidSchemaDefaults(
   }
 
   const firstPreset = presets[0] as Record<string, unknown>;
+  firstPreset.settings = cloneJsonValue(state.sectionSettings);
   firstPreset.blocks = state.blocks.map((block) => ({
     type: block.type,
     settings: cloneJsonValue(block.settings),

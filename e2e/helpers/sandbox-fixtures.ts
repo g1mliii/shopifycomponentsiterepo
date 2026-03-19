@@ -62,7 +62,13 @@ export type SandboxFixtureContext = {
   cleanup: () => Promise<void>;
 };
 
-export async function setupSandboxFixture(): Promise<SandboxFixtureContext | null> {
+type SandboxFixtureOptions = {
+  liquidSource?: string;
+};
+
+export async function setupSandboxFixture(
+  options: SandboxFixtureOptions = {},
+): Promise<SandboxFixtureContext | null> {
   const supabaseUrl = getEnvOrEmpty("NEXT_PUBLIC_SUPABASE_URL");
   const serviceRoleKey = getEnvOrEmpty("SUPABASE_SERVICE_ROLE_KEY");
 
@@ -97,7 +103,7 @@ export async function setupSandboxFixture(): Promise<SandboxFixtureContext | nul
 
     const { error: liquidError } = await serviceClient.storage
       .from("liquid-files")
-      .upload(filePath, Buffer.from(SANDBOX_LIQUID_SOURCE), {
+      .upload(filePath, Buffer.from(options.liquidSource ?? SANDBOX_LIQUID_SOURCE), {
         contentType: "text/plain",
         upsert: false,
       });

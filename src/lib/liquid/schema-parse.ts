@@ -3,7 +3,9 @@ import type {
   LiquidSchemaBlockDefinition,
   LiquidSchemaBlockMatch,
   LiquidSchemaDiagnostic,
+  LiquidSchemaEditorEntry,
   LiquidSchemaOption,
+  LiquidSchemaPresentation,
   LiquidSchemaPreset,
   LiquidSchemaPresetBlock,
   LiquidSchemaSetting,
@@ -52,7 +54,7 @@ const NATIVE_SETTING_TYPES = new Set([
 
 const SIMULATED_SETTING_TYPES = new Set<string>();
 
-const NON_CONTROL_SETTING_TYPES = new Set(["header", "paragraph"]);
+const PRESENTATION_SETTING_TYPES = new Set(["header", "paragraph"]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -320,6 +322,7 @@ function addBlockAndPresetDiagnostics(
   diagnostics: LiquidSchemaDiagnostic[],
   schema: LiquidSchema,
 ): void {
+  const sectionSettingIds = new Set(schema.settings.map((setting) => setting.id));
   const firstBlockPathByType = new Map<string, string>();
   const blockDefinitionByType = new Map<string, LiquidSchemaBlockDefinition>();
 
@@ -335,6 +338,21 @@ function addBlockAndPresetDiagnostics(
   }
 
   for (const [presetIndex, preset] of schema.presets.entries()) {
+    for (const settingId of Object.keys(preset.settings)) {
+      if (sectionSettingIds.has(settingId)) {
+        continue;
+      }
+
+      diagnostics.push({
+        code: "unknown_preset_section_setting",
+        level: "warning",
+        message:
+          `Preset sets section setting "${settingId}" but the schema does not define it. `
+          + "Add the section setting or remove it from the preset.",
+        path: `presets[${presetIndex}].settings.${settingId}`,
+      });
+    }
+
     for (const [blockIndex, presetBlock] of preset.blocks.entries()) {
       const blockDefinition = blockDefinitionByType.get(presetBlock.type);
       if (!blockDefinition) {
@@ -368,6 +386,35 @@ function addBlockAndPresetDiagnostics(
   }
 }
 
+function parsePresentationSetting(
+  value: unknown,
+  index: number,
+  diagnostics: LiquidSchemaDiagnostic[],
+  path: string,
+): LiquidSchemaPresentation | null {
+  if (!isRecord(value)) {
+    diagnostics.push({
+      code: "invalid_setting_shape",
+      level: "warning",
+      message: "Setting entry is not an object and was ignored.",
+      path: `${path}[${index}]`,
+    });
+    return null;
+  }
+
+  const rawType = asString(value.type)?.toLowerCase();
+  if (!rawType || !PRESENTATION_SETTING_TYPES.has(rawType)) {
+    return null;
+  }
+  const type = rawType as LiquidSchemaPresentation["type"];
+
+  return {
+    type,
+    content: asString(value.content) ?? "",
+    raw: value,
+  };
+}
+
 function parseSetting(
   value: unknown,
   index: number,
@@ -387,10 +434,6 @@ function parseSetting(
   const settingPath = `${path}[${index}]`;
   const id = asString(value.id) ?? `setting_${index + 1}`;
   const type = (asString(value.type) ?? "text").toLowerCase();
-
-  if (NON_CONTROL_SETTING_TYPES.has(type)) {
-    return null;
-  }
 
   const options = parseOptions(value.options, diagnostics, settingPath);
   const defaultValue =
@@ -448,9 +491,24 @@ function parseBlockDefinition(
   const type = asString(value.type) ?? `block_${index + 1}`;
   const settingsRaw = Array.isArray(value.settings) ? value.settings : [];
   const settings: LiquidSchemaSetting[] = [];
+  const editorEntries: LiquidSchemaEditorEntry[] = [];
   const firstSettingPathById = new Map<string, string>();
 
   for (const [settingIndex, settingValue] of settingsRaw.entries()) {
+    const presentation = parsePresentationSetting(
+      settingValue,
+      settingIndex,
+      diagnostics,
+      `blocks[${index}].settings`,
+    );
+    if (presentation) {
+      editorEntries.push({
+        kind: "presentation",
+        presentation,
+      });
+      continue;
+    }
+
     const parsedSetting = parseSetting(
       settingValue,
       settingIndex,
@@ -472,6 +530,10 @@ function parseBlockDefinition(
         firstSettingPathById.set(parsedSetting.id, settingPath);
       }
       settings.push(parsedSetting);
+      editorEntries.push({
+        kind: "setting",
+        setting: parsedSetting,
+      });
     }
   }
 
@@ -480,6 +542,7 @@ function parseBlockDefinition(
     name: asString(value.name) ?? type,
     limit: asNumber(value.limit),
     settings,
+    editorEntries,
     raw: value,
   };
 }
@@ -540,6 +603,13 @@ function parsePreset(
     return null;
   }
 
+  const settings: Record<string, LiquidSettingJsonValue> = {};
+  if (isRecord(value.settings)) {
+    for (const [settingId, settingValue] of Object.entries(value.settings)) {
+      settings[settingId] = toJsonValue(settingValue);
+    }
+  }
+
   const blocksRaw = Array.isArray(value.blocks) ? value.blocks : [];
   const blocks: LiquidSchemaPresetBlock[] = [];
   for (const [blockIndex, blockValue] of blocksRaw.entries()) {
@@ -556,6 +626,7 @@ function parsePreset(
 
   return {
     name: asString(value.name) ?? `Preset ${index + 1}`,
+    settings,
     blocks,
     raw: value,
   };
@@ -665,8 +736,18 @@ export function parseLiquidSchema(source: string): ParsedLiquidSchemaResult {
   }
 
   const settings: LiquidSchemaSetting[] = [];
+  const editorEntries: LiquidSchemaEditorEntry[] = [];
   const firstSettingPathById = new Map<string, string>();
   for (const [index, value] of settingsRaw.entries()) {
+    const presentation = parsePresentationSetting(value, index, diagnostics, "settings");
+    if (presentation) {
+      editorEntries.push({
+        kind: "presentation",
+        presentation,
+      });
+      continue;
+    }
+
     const parsed = parseSetting(value, index, diagnostics, "settings");
     if (parsed) {
       const settingPath = `settings[${index}].id`;
@@ -683,6 +764,10 @@ export function parseLiquidSchema(source: string): ParsedLiquidSchemaResult {
         firstSettingPathById.set(parsed.id, settingPath);
       }
       settings.push(parsed);
+      editorEntries.push({
+        kind: "setting",
+        setting: parsed,
+      });
     }
   }
 
@@ -705,6 +790,7 @@ export function parseLiquidSchema(source: string): ParsedLiquidSchemaResult {
   const schema: LiquidSchema = {
     name: asString(schemaObject.name) ?? "Untitled component",
     settings,
+    editorEntries,
     blocks,
     presets,
     raw: schemaObject,
