@@ -22,7 +22,7 @@ test("homepage query URL hydrates results from the public components API", async
             category: "mock",
             thumbnail_path: "mock/component.png",
             created_at: "2026-01-01T00:00:00.000Z",
-            thumbnail_url: "https://cdn.example.test/mock/component.png",
+            thumbnail_url: "/favicon.ico",
             media_kind: "image",
           },
         ],
