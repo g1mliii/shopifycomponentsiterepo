@@ -43,6 +43,7 @@ type ApiErrorResponse = {
 type ComponentsManagerProps = {
   initialComponents: StoredComponent[];
   listLimit: number;
+  previewNonce?: string | null;
 };
 
 type DisplayComponent = StoredComponent & {
@@ -188,7 +189,7 @@ const ComponentRow = memo(function ComponentRow({
 
 ComponentRow.displayName = "ComponentRow";
 
-export function ComponentsManager({ initialComponents, listLimit }: ComponentsManagerProps) {
+export function ComponentsManager({ initialComponents, listLimit, previewNonce }: ComponentsManagerProps) {
   const [components, setComponents] = useState<StoredComponent[]>(initialComponents);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isDeletingId, setIsDeletingId] = useState<string | null>(null);
@@ -587,7 +588,7 @@ export function ComponentsManager({ initialComponents, listLimit }: ComponentsMa
 
   return (
     <>
-      <UploadForm onUploaded={handleUploaded} />
+      <UploadForm onUploaded={handleUploaded} previewNonce={previewNonce} />
 
       <section className="admin-surface mt-8 p-6 sm:p-8">
         <div className="flex flex-wrap items-center justify-between gap-3">

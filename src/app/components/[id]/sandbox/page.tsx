@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { cache } from "react";
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 
 import { getPublicComponentById, isValidComponentId } from "@/lib/components/component-by-id";
@@ -95,6 +96,7 @@ export async function generateMetadata({ params }: SandboxPageProps): Promise<Me
 }
 
 export default async function ComponentSandboxPage({ params }: SandboxPageProps) {
+  const previewNonce = (await headers()).get("x-nonce");
   const { id } = await params;
 
   if (!isValidComponentId(id)) {
@@ -137,7 +139,7 @@ export default async function ComponentSandboxPage({ params }: SandboxPageProps)
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: serializeJsonLd(componentJsonLd) }}
       />
-      <SandboxClient component={component} />
+      <SandboxClient component={component} previewNonce={previewNonce} />
     </>
   );
 }

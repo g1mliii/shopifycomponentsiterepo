@@ -83,6 +83,7 @@ type UploadErrorResponse = {
 
 type UploadFormProps = {
   onUploaded?: (component: UploadedComponent) => void;
+  previewNonce?: string | null;
 };
 
 function clearPersistedUploadDraft(): void {
@@ -119,7 +120,7 @@ async function prepareThumbnailUploadFileOnDemand(file: File) {
   return prepareThumbnailUploadFile(file);
 }
 
-export function UploadForm({ onUploaded }: UploadFormProps) {
+export function UploadForm({ onUploaded, previewNonce }: UploadFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [requestId, setRequestId] = useState<string | null>(null);
@@ -166,7 +167,10 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
   const mediaOverridesRef = useRef<Record<string, string>>(mediaOverrides);
   const mediaSelectionVersionByPathRef = useRef<Map<string, number>>(new Map());
 
-  const previewDocument = useMemo(() => buildPreviewDocument(previewHtml), [previewHtml]);
+  const previewDocument = useMemo(
+    () => buildPreviewDocument(previewHtml, previewNonce),
+    [previewHtml, previewNonce],
+  );
   const workspaceStyle = useMemo(
     () =>
       ({

@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 const PREVIEW_DOCUMENT_SCRIPT_SHA256 = "'sha256-txstEqeFdEQHQn1RNH6gl5mvAE7O6JEf8STyp2aTxlU='";
+const PREVIEW_SAMPLE_MEDIA_ORIGIN = "https://interactive-examples.mdn.mozilla.net";
 
 function getSupabaseOrigin(): string | null {
   const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -36,6 +37,8 @@ function buildCspValue(nonce: string, options?: { includeUnsafeEval?: boolean })
     imgSources.add(supabaseOrigin);
     mediaSources.add(supabaseOrigin);
   }
+
+  mediaSources.add(PREVIEW_SAMPLE_MEDIA_ORIGIN);
 
   const scriptSources = ["'self'", `'nonce-${nonce}'`, "'strict-dynamic'", PREVIEW_DOCUMENT_SCRIPT_SHA256];
   if (options?.includeUnsafeEval) {

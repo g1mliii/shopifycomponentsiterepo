@@ -6,12 +6,58 @@ export const KEYBOARD_SPLIT_STEP_PERCENT = 4;
 export const PREVIEW_ENQUEUE_DEBOUNCE_MS = 80;
 export const LOCAL_MEDIA_PREVIEW_MAX_BYTES = 8 * 1024 * 1024;
 
+function escapeHtmlAttribute(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("\"", "&quot;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
+function applyNonceToPreviewScripts(html: string, nonce: string | null | undefined): string {
+  if (!nonce) {
+    return html;
+  }
+
+  const escapedNonce = escapeHtmlAttribute(nonce);
+  return html.replace(/<script\b([^>]*)>/gi, (match, attributes: string) => {
+    if (/\bnonce\s*=/.test(attributes)) {
+      return match;
+    }
+
+    return `<script nonce="${escapedNonce}"${attributes}>`;
+  });
+}
+
+function normalizeInlinePreviewHandlers(html: string): string {
+  let normalizedHtml = html.replace(
+    /\s+onclick="document\.getElementById\('([^']+)'\)\.scrollBy\(\{left:\s*(-?\d+),\s*behavior:\s*'smooth'\}\)"/gi,
+    (_match, targetId: string, leftAmount: string) =>
+      ` data-pressplay-scroll-target="${escapeHtmlAttribute(targetId)}" data-pressplay-scroll-left="${escapeHtmlAttribute(leftAmount)}"`,
+  );
+
+  normalizedHtml = normalizedHtml.replace(
+    /\s+onclick="this\.parentElement\.classList\.toggle\('([^']+)'\)"/gi,
+    (_match, className: string) =>
+      ` data-pressplay-toggle-parent-class="${escapeHtmlAttribute(className)}"`,
+  );
+
+  return normalizedHtml;
+}
+
 export function toTitleSlug(value: string): string {
   const normalized = value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
   return normalized.length > 0 ? normalized.slice(0, 64) : "component";
 }
 
-export function buildPreviewDocument(html: string): string {
+export function buildPreviewDocument(html: string, nonce?: string | null): string {
+  const escapedNonce = nonce ? escapeHtmlAttribute(nonce) : null;
+  const scriptPolicy = escapedNonce
+    ? `script-src 'unsafe-inline' 'nonce-${escapedNonce}'`
+    : "script-src 'unsafe-inline'";
+  const previewHtml = applyNonceToPreviewScripts(normalizeInlinePreviewHandlers(html), escapedNonce);
+  const previewScriptNonceAttribute = escapedNonce ? ` nonce="${escapedNonce}"` : "";
+
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -19,7 +65,7 @@ export function buildPreviewDocument(html: string): string {
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https: http:; img-src data: blob: https: http:; media-src data: blob: https: http:; font-src data: https: http:; connect-src 'none'; frame-src 'none'; child-src 'none'; worker-src 'none'; manifest-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none';"
+      content="default-src 'none'; ${scriptPolicy}; style-src 'unsafe-inline' https: http:; img-src data: blob: https: http:; media-src data: blob: https: http:; font-src data: https: http:; connect-src 'none'; frame-src 'none'; child-src 'none'; worker-src 'none'; manifest-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none';"
     />
     <style>
       :root { color-scheme: light; }
@@ -46,8 +92,8 @@ export function buildPreviewDocument(html: string): string {
     </style>
   </head>
   <body>
-    <div id="pressplay-preview-root">${html}</div>
-    <script>
+    <div id="pressplay-preview-root">${previewHtml}</div>
+    <script${previewScriptNonceAttribute}>
       (function () {
         var root = document.getElementById("pressplay-preview-root");
         if (!root) {
@@ -135,6 +181,43 @@ export function buildPreviewDocument(html: string): string {
         } else {
           window.addEventListener("load", queueFitScale, { once: true });
         }
+
+        document.addEventListener("click", function (event) {
+          var target = event.target;
+          if (!(target instanceof Element)) {
+            return;
+          }
+
+          var scrollTrigger = target.closest("[data-pressplay-scroll-target]");
+          if (scrollTrigger instanceof HTMLElement) {
+            var scrollTargetId = scrollTrigger.getAttribute("data-pressplay-scroll-target");
+            var scrollLeftRaw = scrollTrigger.getAttribute("data-pressplay-scroll-left");
+            if (!scrollTargetId || !scrollLeftRaw) {
+              return;
+            }
+
+            var scrollElement = document.getElementById(scrollTargetId);
+            var scrollLeft = Number.parseFloat(scrollLeftRaw);
+            if (!scrollElement || !Number.isFinite(scrollLeft)) {
+              return;
+            }
+
+            event.preventDefault();
+            scrollElement.scrollBy({ left: scrollLeft, behavior: "smooth" });
+            return;
+          }
+
+          var toggleTrigger = target.closest("[data-pressplay-toggle-parent-class]");
+          if (toggleTrigger instanceof HTMLElement) {
+            var className = toggleTrigger.getAttribute("data-pressplay-toggle-parent-class");
+            if (!className || !toggleTrigger.parentElement) {
+              return;
+            }
+
+            event.preventDefault();
+            toggleTrigger.parentElement.classList.toggle(className);
+          }
+        });
 
         window.requestAnimationFrame(queueFitScale);
 

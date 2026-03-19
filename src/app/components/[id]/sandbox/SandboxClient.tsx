@@ -52,6 +52,7 @@ const LOCAL_MEDIA_PREVIEW_ERROR_PREFIX = "Local preview file";
 
 type SandboxClientProps = {
   component: PublicComponentById;
+  previewNonce?: string | null;
 };
 
 type RenderInput = {
@@ -132,7 +133,7 @@ async function loadLiquidSourceText(componentId: string, signal: AbortSignal): P
   }
 }
 
-export function SandboxClient({ component }: SandboxClientProps) {
+export function SandboxClient({ component, previewNonce }: SandboxClientProps) {
   const [isPendingTransition, startTransition] = useTransition();
   const [source, setSource] = useState<string | null>(null);
   const [schema, setSchema] = useState<LiquidSchema | null>(null);
@@ -209,7 +210,10 @@ export function SandboxClient({ component }: SandboxClientProps) {
     return applyLiquidPreviewFallbacks(schema, withMediaOverrides);
   }, [editorState, mediaOverrides, schema]);
 
-  const iframeDocument = useMemo(() => buildPreviewDocument(previewHtml), [previewHtml]);
+  const iframeDocument = useMemo(
+    () => buildPreviewDocument(previewHtml, previewNonce),
+    [previewHtml, previewNonce],
+  );
 
   const sectionUnsupportedSettingsCount = useMemo(() => {
     return (schema?.settings ?? []).filter((setting) => setting.support !== "native").length;

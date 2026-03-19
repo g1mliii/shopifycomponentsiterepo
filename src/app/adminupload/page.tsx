@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import type { CSSProperties } from "react";
+import { headers } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -30,6 +31,7 @@ type StoredComponent = {
 };
 
 export default async function AdminUploadPage() {
+  const previewNonce = (await headers()).get("x-nonce");
   const adminResult = await requireAdmin();
 
   if (!adminResult.ok) {
@@ -103,6 +105,7 @@ export default async function AdminUploadPage() {
         <ComponentsManager
           initialComponents={(initialComponentsData ?? []) as StoredComponent[]}
           listLimit={ADMIN_COMPONENT_LIST_LIMIT}
+          previewNonce={previewNonce}
         />
       </section>
     </main>
