@@ -19,6 +19,7 @@ import {
   KEYBOARD_SPLIT_STEP_PERCENT,
   LOCAL_MEDIA_PREVIEW_MAX_BYTES,
   PREVIEW_ENQUEUE_DEBOUNCE_MS,
+  type PreviewMode,
   applyMediaOverrides,
   buildPreviewDocument,
   clampSplitPercent,
@@ -149,6 +150,8 @@ export function SandboxClient({ component, previewNonce }: SandboxClientProps) {
   const [splitPercent, setSplitPercent] = useState(44);
   const [isResizing, setIsResizing] = useState(false);
   const [isWorkspaceFullWidth, setIsWorkspaceFullWidth] = useState(true);
+  const [previewMode, setPreviewMode] = useState<PreviewMode>("section");
+  const [fitPreviewToContent, setFitPreviewToContent] = useState(false);
   const [pendingBlockType, setPendingBlockType] = useState<string>("");
   const [mediaOverrides, setMediaOverrides] = useState<Record<string, string>>({});
 
@@ -851,6 +854,10 @@ export function SandboxClient({ component, previewNonce }: SandboxClientProps) {
             blockSettingLookupByType={blockSettingLookupByType}
             previewError={previewError}
             iframeDocument={iframeDocument}
+            previewMode={previewMode}
+            fitPreviewToContent={fitPreviewToContent}
+            onPreviewModeChange={setPreviewMode}
+            onFitPreviewToContentChange={setFitPreviewToContent}
             onPendingBlockTypeChange={setPendingBlockType}
             onAddBlock={handleAddBlock}
             onMoveBlock={handleMoveBlock}

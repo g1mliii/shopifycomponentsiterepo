@@ -20,6 +20,7 @@ import {
   MAX_SPLIT_PERCENT,
   MIN_SPLIT_PERCENT,
   PREVIEW_ENQUEUE_DEBOUNCE_MS,
+  type PreviewMode,
   applyMediaOverrides,
   buildPreviewDocument,
   clampSplitPercent,
@@ -144,6 +145,8 @@ export function UploadForm({ onUploaded, previewNonce }: UploadFormProps) {
   const [isRenderingPreview, setIsRenderingPreview] = useState(false);
   const [splitPercent, setSplitPercent] = useState(44);
   const [isResizing, setIsResizing] = useState(false);
+  const [previewMode, setPreviewMode] = useState<PreviewMode>("section");
+  const [fitPreviewToContent, setFitPreviewToContent] = useState(false);
 
   const isMountedRef = useRef(true);
   const submitLockRef = useRef(false);
@@ -1382,6 +1385,10 @@ export function UploadForm({ onUploaded, previewNonce }: UploadFormProps) {
               blockSettingLookupByType={blockSettingLookupByType}
               previewError={previewError}
               iframeDocument={previewDocument}
+              previewMode={previewMode}
+              fitPreviewToContent={fitPreviewToContent}
+              onPreviewModeChange={setPreviewMode}
+              onFitPreviewToContentChange={setFitPreviewToContent}
               onPendingBlockTypeChange={setPendingBlockType}
               onAddBlock={handleAddBlock}
               onMoveBlock={handleMoveBlock}

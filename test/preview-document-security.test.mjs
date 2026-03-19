@@ -39,4 +39,5 @@ test("buildPreviewDocument normalizes inline carousel and toggle handlers", () =
   assert.match(document, /data-pressplay-scroll-left="300"/);
   assert.match(document, /data-pressplay-toggle-parent-class="open"/);
   assert.doesNotMatch(document, /onclick=/);
+  assert.match(document, /pressplay-preview-metrics/);
 });

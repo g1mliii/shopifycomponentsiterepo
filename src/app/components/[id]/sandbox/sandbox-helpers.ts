@@ -6,6 +6,8 @@ export const KEYBOARD_SPLIT_STEP_PERCENT = 4;
 export const PREVIEW_ENQUEUE_DEBOUNCE_MS = 80;
 export const LOCAL_MEDIA_PREVIEW_MAX_BYTES = 8 * 1024 * 1024;
 
+export type PreviewMode = "section" | "overlay";
+
 function escapeHtmlAttribute(value: string): string {
   return value
     .replaceAll("&", "&amp;")
@@ -111,8 +113,9 @@ export function buildPreviewDocument(html: string, nonce?: string | null): strin
 
         function applyFitScale() {
           rafId = 0;
-          root.style.transform = "scale(1)";
+          root.style.transform = "";
           root.style.width = "auto";
+          root.style.margin = "";
 
           var viewportWidth = Math.max(320, window.innerWidth - 24);
           var contentWidth = Math.max(1, root.scrollWidth);
@@ -134,11 +137,58 @@ export function buildPreviewDocument(html: string, nonce?: string | null): strin
           lastContentHeight = contentHeight;
           lastScale = scale;
 
+          if (scale >= 0.999) {
+            document.body.style.minHeight = contentHeight + 24 + "px";
+            reportPreviewMetrics();
+            return;
+          }
+
           root.style.width = contentWidth + "px";
           root.style.transform = "scale(" + scale + ")";
           root.style.margin = "0 auto";
           var scaledHeight = Math.ceil(contentHeight * scale);
           document.body.style.minHeight = scaledHeight + 24 + "px";
+          reportPreviewMetrics();
+        }
+
+        function reportPreviewMetrics() {
+          if (!window.parent || window.parent === window) {
+            return;
+          }
+
+          var elements = root.querySelectorAll("*");
+          var minTop = Number.POSITIVE_INFINITY;
+          var maxBottom = Number.NEGATIVE_INFINITY;
+          var maxRight = Number.NEGATIVE_INFINITY;
+
+          for (var index = 0; index < elements.length; index += 1) {
+            var element = elements[index];
+            if (!(element instanceof HTMLElement)) {
+              continue;
+            }
+
+            var rect = element.getBoundingClientRect();
+            if (rect.width <= 0 && rect.height <= 0) {
+              continue;
+            }
+
+            minTop = Math.min(minTop, rect.top);
+            maxBottom = Math.max(maxBottom, rect.bottom);
+            maxRight = Math.max(maxRight, rect.right);
+          }
+
+          var rootRect = root.getBoundingClientRect();
+          var visualTop = Number.isFinite(minTop) ? Math.min(minTop, rootRect.top) : rootRect.top;
+          var visualBottom = Number.isFinite(maxBottom) ? Math.max(maxBottom, rootRect.bottom) : rootRect.bottom;
+          var visualRight = Number.isFinite(maxRight) ? Math.max(maxRight, rootRect.right) : rootRect.right;
+
+          window.parent.postMessage({
+            type: "pressplay-preview-metrics",
+            visualHeight: Math.max(1, Math.ceil(visualBottom - visualTop)),
+            visualWidth: Math.max(1, Math.ceil(visualRight - rootRect.left)),
+            flowHeight: Math.max(1, Math.ceil(root.scrollHeight)),
+            scale: lastScale || 1,
+          }, "*");
         }
 
         function queueFitScale() {

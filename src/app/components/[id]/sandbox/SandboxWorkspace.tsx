@@ -1,10 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, RefObject } from "react";
 
 import { SettingControl } from "./setting-control";
-import { MAX_SPLIT_PERCENT, MIN_SPLIT_PERCENT, getBlockSettingPath, getSectionSettingPath } from "./sandbox-helpers";
+import {
+  MAX_SPLIT_PERCENT,
+  MIN_SPLIT_PERCENT,
+  type PreviewMode,
+  getBlockSettingPath,
+  getSectionSettingPath,
+} from "./sandbox-helpers";
 
 import { getPlainLanguageSettingLabel } from "@/lib/liquid/setting-labels";
 import { getConditionalVisibilityHints } from "@/lib/liquid/visibility-hints";
@@ -35,6 +41,10 @@ type SandboxWorkspaceProps = {
   previewError: string | null;
   iframeDocument: string;
   previewViewportAspectRatio?: string;
+  previewMode: PreviewMode;
+  fitPreviewToContent: boolean;
+  onPreviewModeChange: (mode: PreviewMode) => void;
+  onFitPreviewToContentChange: (value: boolean) => void;
   onPendingBlockTypeChange: (value: string) => void;
   onAddBlock: () => void;
   onMoveBlock: (blockId: string, direction: "up" | "down") => void;
@@ -43,6 +53,13 @@ type SandboxWorkspaceProps = {
   onSelectLocalMedia: (pathKey: string, file: File | null) => void;
   onSplitterPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void;
   onSplitterKeyDown: (event: ReactKeyboardEvent<HTMLDivElement>) => void;
+};
+
+type PreviewMetrics = {
+  flowHeight: number;
+  scale: number;
+  visualHeight: number;
+  visualWidth: number;
 };
 
 export function SandboxWorkspace({
@@ -62,6 +79,10 @@ export function SandboxWorkspace({
   previewError,
   iframeDocument,
   previewViewportAspectRatio,
+  previewMode,
+  fitPreviewToContent,
+  onPreviewModeChange,
+  onFitPreviewToContentChange,
   onPendingBlockTypeChange,
   onAddBlock,
   onMoveBlock,
@@ -75,6 +96,8 @@ export function SandboxWorkspace({
   const hasPreviewAspectRatio = typeof previewViewportAspectRatio === "string"
     && previewViewportAspectRatio.trim().length > 0;
   const [collapsedBlockIds, setCollapsedBlockIds] = useState<Set<string>>(() => new Set());
+  const [previewMetrics, setPreviewMetrics] = useState<PreviewMetrics | null>(null);
+  const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
 
   const blockDefinitionByType = useMemo(() => {
     const map = new Map<string, LiquidSchema["blocks"][number]>();
@@ -123,6 +146,106 @@ export function SandboxWorkspace({
 
     onRemoveBlock(blockId);
   };
+
+  useEffect(() => {
+    const handleWindowMessage = (event: MessageEvent) => {
+      if (event.data?.type !== "pressplay-preview-metrics") {
+        return;
+      }
+
+      if (!previewIframeRef.current?.contentWindow || event.source !== previewIframeRef.current.contentWindow) {
+        return;
+      }
+
+      const visualHeight = Number(event.data.visualHeight);
+      const visualWidth = Number(event.data.visualWidth);
+      const flowHeight = Number(event.data.flowHeight);
+      const scale = Number(event.data.scale);
+      if (
+        !Number.isFinite(visualHeight)
+        || !Number.isFinite(visualWidth)
+        || !Number.isFinite(flowHeight)
+        || !Number.isFinite(scale)
+      ) {
+        return;
+      }
+
+      setPreviewMetrics({
+        visualHeight,
+        visualWidth,
+        flowHeight,
+        scale,
+      });
+    };
+
+    window.addEventListener("message", handleWindowMessage);
+    return () => {
+      window.removeEventListener("message", handleWindowMessage);
+    };
+  }, []);
+
+  const effectivePreviewAspectRatio = useMemo(() => {
+    if (hasPreviewAspectRatio) {
+      return previewViewportAspectRatio;
+    }
+
+    if (previewMode === "overlay") {
+      return "9 / 16";
+    }
+
+    return null;
+  }, [hasPreviewAspectRatio, previewMode, previewViewportAspectRatio]);
+
+  const fitPreviewHeight = useMemo(() => {
+    if (!fitPreviewToContent || !previewMetrics) {
+      return null;
+    }
+
+    const paddedHeight = previewMetrics.visualHeight + 24;
+    return Math.max(220, Math.min(900, paddedHeight));
+  }, [fitPreviewToContent, previewMetrics]);
+
+  const previewCanvasStyle = useMemo(() => {
+    const baseStyle: CSSProperties = {};
+
+    if (previewMode === "overlay") {
+      baseStyle.width = "min(100%, 26rem)";
+      baseStyle.maxWidth = "100%";
+      baseStyle.height = fitPreviewHeight !== null ? `${fitPreviewHeight}px` : "min(100%, 42rem)";
+      baseStyle.maxHeight = "100%";
+      baseStyle.borderRadius = "1rem";
+      baseStyle.overflow = "hidden";
+      baseStyle.boxShadow = "0 18px 40px rgba(50, 44, 34, 0.18)";
+      baseStyle.border = "1px solid color-mix(in srgb, var(--color-timber) 52%, transparent)";
+      baseStyle.background = "#ffffff";
+
+      if (effectivePreviewAspectRatio) {
+        baseStyle.aspectRatio = effectivePreviewAspectRatio;
+        baseStyle.height = fitPreviewHeight !== null ? `${fitPreviewHeight}px` : "auto";
+      }
+
+      return baseStyle;
+    }
+
+    if (effectivePreviewAspectRatio) {
+      baseStyle.aspectRatio = effectivePreviewAspectRatio;
+      baseStyle.height = fitPreviewHeight !== null ? `${fitPreviewHeight}px` : "100%";
+      baseStyle.width = "auto";
+      baseStyle.maxHeight = "100%";
+      baseStyle.maxWidth = "100%";
+      return baseStyle;
+    }
+
+    baseStyle.width = "100%";
+    baseStyle.height = fitPreviewHeight !== null ? `${fitPreviewHeight}px` : "100%";
+    return baseStyle;
+  }, [effectivePreviewAspectRatio, fitPreviewHeight, previewMode]);
+
+  const previewStageClassName = previewMode === "overlay"
+    ? "flex h-full w-full items-center justify-center overflow-auto p-4"
+    : effectivePreviewAspectRatio || fitPreviewHeight !== null
+      ? "flex h-full w-full items-start justify-center overflow-auto p-3"
+      : "h-full w-full overflow-auto";
 
   return (
     <div
@@ -373,38 +496,52 @@ export function SandboxWorkspace({
           className="px-4 py-3"
           style={{ borderBottom: "1px solid color-mix(in srgb, var(--color-timber) 58%, transparent)" }}
         >
-          <h2 className="sandbox-title text-sm font-semibold">Preview</h2>
-          {previewError ? <p className="mt-1 text-xs" style={{ color: "#8f2f29" }}>{previewError}</p> : null}
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="sandbox-title text-sm font-semibold">Preview</h2>
+              {previewError ? <p className="mt-1 text-xs" style={{ color: "#8f2f29" }}>{previewError}</p> : null}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="sandbox-muted flex items-center gap-2 text-xs">
+                <span className="font-semibold">Mode</span>
+                <select
+                  value={previewMode}
+                  onChange={(event) => onPreviewModeChange(event.target.value as PreviewMode)}
+                  className="sandbox-input sandbox-focus-ring h-9 min-w-[8.5rem] px-3 text-xs"
+                >
+                  <option value="section">Section</option>
+                  <option value="overlay">Overlay</option>
+                </select>
+              </label>
+              <label className="sandbox-muted flex items-center gap-2 rounded-full border px-3 py-2 text-xs"
+                style={{ borderColor: "color-mix(in srgb, var(--color-timber) 52%, transparent)" }}
+              >
+                <input
+                  type="checkbox"
+                  checked={fitPreviewToContent}
+                  onChange={(event) => onFitPreviewToContentChange(event.target.checked)}
+                />
+                <span className="font-semibold">Fit Content</span>
+              </label>
+            </div>
+          </div>
         </header>
         <div className="min-h-0 w-full flex-1">
-          {hasPreviewAspectRatio ? (
-            <div className="flex h-full w-full items-start justify-center overflow-auto p-3">
-              <div
-                className="max-h-full max-w-full"
-                style={{
-                  aspectRatio: previewViewportAspectRatio,
-                  height: "100%",
-                  width: "auto",
-                }}
-              >
-                <iframe
-                  title="Component preview"
-                  srcDoc={iframeDocument}
-                  sandbox="allow-scripts"
-                  referrerPolicy="no-referrer"
-                  className="h-full w-full rounded-md border-0 bg-white"
-                />
-              </div>
+          <div className={previewStageClassName}>
+            <div className="max-h-full max-w-full" style={previewCanvasStyle}>
+              <iframe
+                ref={previewIframeRef}
+                title="Component preview"
+                srcDoc={iframeDocument}
+                onLoad={() => setPreviewMetrics(null)}
+                sandbox="allow-scripts"
+                referrerPolicy="no-referrer"
+                className={`h-full w-full border-0 ${previewMode === "overlay" ? "bg-white" : ""} ${
+                  effectivePreviewAspectRatio || previewMode === "overlay" ? "rounded-md" : ""
+                }`}
+              />
             </div>
-          ) : (
-            <iframe
-              title="Component preview"
-              srcDoc={iframeDocument}
-              sandbox="allow-scripts"
-              referrerPolicy="no-referrer"
-              className="h-full w-full border-0"
-            />
-          )}
+          </div>
         </div>
       </section>
     </div>
