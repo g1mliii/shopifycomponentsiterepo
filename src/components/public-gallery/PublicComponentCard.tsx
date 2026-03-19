@@ -64,7 +64,7 @@ export function PublicComponentCard({
       <div className="mt-4 grid grid-cols-2 gap-2 px-1">
         <a
           href={`/api/components/${encodeURIComponent(component.id)}/download`}
-          className="inline-flex h-10 touch-manipulation items-center justify-center rounded-full px-4 text-sm font-semibold transition-[transform,color,background-color,border-color] duration-200 motion-safe:hover:-translate-y-0.5 motion-safe:active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+          className="inline-flex min-h-11 touch-manipulation items-center justify-center rounded-full px-4 text-sm font-semibold transition-[transform,color,background-color,border-color] duration-200 motion-safe:hover:-translate-y-0.5 motion-safe:active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
           style={{
             border: "2px solid var(--color-clay)",
             background: "var(--color-card)",
@@ -78,7 +78,7 @@ export function PublicComponentCard({
         <Link
           href={`/components/${encodeURIComponent(component.id)}/sandbox`}
           prefetch={false}
-          className="inline-flex h-10 touch-manipulation items-center justify-center rounded-full px-4 text-sm font-semibold transition-[transform,background-color,color] duration-200 motion-safe:hover:-translate-y-0.5 motion-safe:active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+          className="inline-flex min-h-11 touch-manipulation items-center justify-center rounded-full px-4 text-sm font-semibold transition-[transform,background-color,color] duration-200 motion-safe:hover:-translate-y-0.5 motion-safe:active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
           style={{
             background: "var(--color-clay)",
             color: "var(--foreground)",

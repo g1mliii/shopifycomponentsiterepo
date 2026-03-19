@@ -42,3 +42,25 @@ export async function createSignedStorageObjectUrl(
     errorMessage: data?.signedUrl ? null : "Missing signed URL from storage response.",
   };
 }
+
+export async function downloadStorageObjectText(
+  bucket: string,
+  pathValue: string,
+): Promise<{ text: string | null; errorMessage: string | null }> {
+  const serviceRole = createServiceRoleSupabaseClient();
+  const { data, error } = await serviceRole.storage
+    .from(bucket)
+    .download(pathValue);
+
+  if (error) {
+    return {
+      text: null,
+      errorMessage: error.message,
+    };
+  }
+
+  return {
+    text: await data.text(),
+    errorMessage: null,
+  };
+}

@@ -115,15 +115,20 @@ async function fetchLiquidSourceText(url: string, signal: AbortSignal): Promise<
 
 async function loadLiquidSourceText(componentId: string, signal: AbortSignal): Promise<string> {
   const baseRoute = `/api/components/${encodeURIComponent(componentId)}/liquid`;
+  const proxyRoute = `${baseRoute}?mode=proxy`;
 
   try {
-    return await fetchLiquidSourceText(baseRoute, signal);
+    return await fetchLiquidSourceText(proxyRoute, signal);
   } catch (error) {
-    if (signal.aborted || error instanceof LiquidRouteHttpError) {
+    if (
+      signal.aborted
+      || (error instanceof LiquidRouteHttpError
+        && (error.status === 400 || error.status === 404))
+    ) {
       throw error;
     }
 
-    return fetchLiquidSourceText(`${baseRoute}?mode=proxy`, signal);
+    return fetchLiquidSourceText(baseRoute, signal);
   }
 }
 
@@ -809,12 +814,21 @@ export function SandboxClient({ component }: SandboxClientProps) {
             Loading Liquid source…
           </section>
         ) : loadError ? (
-          <section className="sandbox-card-danger h-full overflow-auto p-6 text-sm" style={{ color: "#8f2f29" }}>
-            {loadError}
+          <section className="sandbox-card-danger h-full overflow-auto p-6" style={{ color: "#8f2f29" }}>
+            <p className="font-display text-2xl">Liquid source unavailable</p>
+            <p className="mt-3 max-w-xl text-sm leading-relaxed">
+              {loadError}
+            </p>
+            <p className="mt-2 text-sm leading-relaxed">
+              Try refreshing the page or downloading the original file. If the problem persists, the stored Liquid asset may need to be re-uploaded.
+            </p>
           </section>
         ) : !schema || !editorState || !source ? (
-          <section className="sandbox-card-danger h-full overflow-auto p-6 text-sm" style={{ color: "#8f2f29" }}>
-            Schema parsing failed. This component cannot be edited in the sandbox yet.
+          <section className="sandbox-card-danger h-full overflow-auto p-6" style={{ color: "#8f2f29" }}>
+            <p className="font-display text-2xl">Sandbox editing unavailable</p>
+            <p className="mt-3 text-sm leading-relaxed">
+              Schema parsing failed. This component cannot be edited in the sandbox yet.
+            </p>
           </section>
         ) : (
           <SandboxWorkspace

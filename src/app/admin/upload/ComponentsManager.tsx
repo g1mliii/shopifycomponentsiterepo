@@ -1,6 +1,7 @@
 "use client";
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 
 import { formatUtcTimestamp } from "@/lib/datetime/format-utc-timestamp";
 import { validationLimits } from "@/lib/validation/upload-component";
@@ -97,27 +98,30 @@ const ComponentRow = memo(function ComponentRow({
   onThumbnailFileChange,
 }: ComponentRowProps) {
   return (
-    <li className="rounded-lg border border-zinc-200 bg-zinc-50 p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <li className="admin-surface-soft p-5">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-zinc-900">{component.title}</p>
-          <p className="mt-1 text-xs text-zinc-600">
+          <p className="font-display text-2xl" style={{ color: "var(--foreground)" }}>{component.title}</p>
+          <p className="admin-muted mt-2 text-sm">
             Category: <span className="font-medium">{component.category}</span>
           </p>
-          <p className="mt-1 text-xs text-zinc-600">
+          <p className="admin-muted mt-1 text-sm">
             Created: <span className="font-medium">{component.createdAtLabel}</span>
           </p>
-          <p className="mt-2 break-all text-xs text-zinc-500">
+          <p className="admin-muted mt-3 break-all text-xs">
             thumbnail_path: <code>{component.thumbnail_path ?? "not added yet"}</code>
           </p>
-          <p className="mt-1 break-all text-xs text-zinc-500">
+          <p className="admin-muted mt-1 break-all text-xs">
             file_path: <code>{component.file_path}</code>
           </p>
-          <div className="mt-3 rounded-lg border border-zinc-200 bg-white p-3">
-            <p className="text-xs font-medium text-zinc-800">
+          <div
+            className="mt-4 border-t pt-4"
+            style={{ borderColor: "color-mix(in srgb, var(--color-timber) 58%, transparent)" }}
+          >
+            <p className="admin-label text-xs">
               {component.thumbnail_path ? "Thumbnail attached" : "Thumbnail pending"}
             </p>
-            <p className="mt-1 text-xs text-zinc-500">
+            <p className="admin-muted mt-1 text-xs">
               Video thumbnails auto-compress to a small gallery-card format that preserves the full frame.
             </p>
             <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -130,13 +134,16 @@ const ComponentRow = memo(function ComponentRow({
                   onThumbnailFileChange(component.id, event.currentTarget.files?.[0] ?? null);
                 }}
                 disabled={isBusy}
-                className="block min-w-[16rem] max-w-full rounded-lg border border-zinc-300 px-3 py-2 text-xs text-zinc-800 file:mr-3 file:rounded-md file:border-0 file:bg-zinc-100 file:px-3 file:py-2 file:text-xs file:font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+                className="admin-file-input min-w-[16rem] max-w-full text-sm disabled:cursor-not-allowed disabled:opacity-60"
               />
               <button
                 type="button"
                 onClick={() => void onSaveThumbnail(component)}
                 disabled={!selectedThumbnailName || isBusy}
-                className="touch-manipulation rounded-lg border border-zinc-900 bg-zinc-900 px-3 py-2 text-xs font-medium text-white transition-transform duration-150 motion-reduce:transition-none motion-safe:hover:will-change-transform motion-safe:hover:transform-gpu motion-safe:hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+                className="admin-btn admin-btn-primary transition-transform duration-150 motion-reduce:transition-none motion-safe:hover:will-change-transform motion-safe:hover:transform-gpu motion-safe:hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+                style={{
+                  "--tw-ring-color": "color-mix(in srgb, var(--color-moss) 38%, transparent)",
+                } as CSSProperties}
               >
                 {isPreparingThumbnail
                   ? "Compressing Thumbnail…"
@@ -148,7 +155,7 @@ const ComponentRow = memo(function ComponentRow({
               </button>
             </div>
             {selectedThumbnailName ? (
-              <p className="mt-2 break-all text-xs text-zinc-500">
+              <p className="admin-muted mt-2 break-all text-xs">
                 Selected file: <span className="font-medium">{selectedThumbnailName}</span>
               </p>
             ) : null}
@@ -156,7 +163,7 @@ const ComponentRow = memo(function ComponentRow({
               <div
                 role="status"
                 aria-live="polite"
-                className="mt-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800"
+                className="admin-status admin-status-info mt-2 text-xs"
               >
                 {thumbnailStatusMessage}
               </div>
@@ -167,7 +174,10 @@ const ComponentRow = memo(function ComponentRow({
           type="button"
           onClick={() => void onDelete(component)}
           disabled={isBusy}
-          className="touch-manipulation rounded-lg border border-red-300 px-3 py-2 text-sm font-medium text-red-700 transition-transform duration-150 motion-reduce:transition-none motion-safe:hover:will-change-transform motion-safe:hover:transform-gpu motion-safe:hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+          className="admin-btn admin-btn-danger transition-transform duration-150 motion-reduce:transition-none motion-safe:hover:will-change-transform motion-safe:hover:transform-gpu motion-safe:hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+          style={{
+            "--tw-ring-color": "color-mix(in srgb, #b3261e 24%, transparent)",
+          } as CSSProperties}
         >
           {isDeleting ? "Deleting…" : "Delete"}
         </button>
@@ -579,23 +589,29 @@ export function ComponentsManager({ initialComponents, listLimit }: ComponentsMa
     <>
       <UploadForm onUploaded={handleUploaded} />
 
-      <section className="mt-8 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+      <section className="admin-surface mt-8 p-6 sm:p-8">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-xl font-semibold tracking-tight text-zinc-900">Manage Components</h2>
+          <div>
+            <p className="admin-kicker mb-2">Library Maintenance</p>
+            <h2 className="admin-title text-2xl sm:text-3xl">Manage Components</h2>
+          </div>
           <button
             type="button"
             onClick={() => void refreshComponents()}
             disabled={isAnyActionInProgress}
-            className="touch-manipulation rounded-lg border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-800 transition-transform duration-150 motion-reduce:transition-none motion-safe:hover:will-change-transform motion-safe:hover:transform-gpu motion-safe:hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+            className="admin-btn admin-btn-secondary transition-transform duration-150 motion-reduce:transition-none motion-safe:hover:will-change-transform motion-safe:hover:transform-gpu motion-safe:hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+            style={{
+              "--tw-ring-color": "color-mix(in srgb, var(--color-moss) 36%, transparent)",
+            } as CSSProperties}
           >
             {isRefreshing ? "Refreshing…" : "Refresh List"}
           </button>
         </div>
 
-        <p className="mt-2 text-sm text-zinc-600">
+        <p className="admin-muted mt-3 text-sm">
           {components.length} component{components.length === 1 ? "" : "s"}
         </p>
-        <p className="mt-1 text-xs text-zinc-500">
+        <p className="admin-muted mt-1 text-xs">
           Showing the latest {listLimit} component{listLimit === 1 ? "" : "s"}.
         </p>
 
@@ -603,11 +619,11 @@ export function ComponentsManager({ initialComponents, listLimit }: ComponentsMa
           <div
             role="status"
             aria-live="polite"
-            className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+            className="admin-status admin-status-error mt-4 text-sm"
           >
             <p>{errorMessage}</p>
             {requestId ? (
-              <p className="mt-1 text-xs text-red-600">
+              <p className="mt-1 text-xs">
                 Request ID: <code>{requestId}</code>
               </p>
             ) : null}
@@ -615,9 +631,14 @@ export function ComponentsManager({ initialComponents, listLimit }: ComponentsMa
         ) : null}
 
         {components.length === 0 ? (
-          <p className="mt-4 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-600">
-            No components uploaded yet.
-          </p>
+          <div className="admin-empty mt-5 px-4 py-5">
+            <p className="font-display text-2xl" style={{ color: "var(--foreground)" }}>
+              No components uploaded yet.
+            </p>
+            <p className="admin-muted mt-2 text-sm">
+              Upload a first component above to create a previewable starting point for the library.
+            </p>
+          </div>
         ) : (
           <ul className="mt-4 space-y-3">
             {componentsWithFormattedCreatedAt.map((component) => (

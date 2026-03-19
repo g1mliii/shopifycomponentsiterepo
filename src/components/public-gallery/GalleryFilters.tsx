@@ -96,7 +96,7 @@ export function GalleryFilters({
             placeholder="Search by title…"
             autoComplete="off"
             spellCheck={false}
-            className="h-11 rounded-full border px-5 text-sm transition-[border-color,background-color] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+            className="h-12 rounded-full border px-5 text-sm transition-[border-color,background-color] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
             style={{
               borderColor: "var(--color-timber)",
               background: "color-mix(in srgb, white 50%, transparent)",
@@ -115,7 +115,7 @@ export function GalleryFilters({
             name="category"
             value={categoryValue}
             onChange={(event) => setCategoryValue(event.currentTarget.value)}
-            className="h-11 rounded-full border px-5 text-sm transition-[border-color,background-color] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 cursor-pointer"
+            className="h-12 rounded-full border px-5 text-sm transition-[border-color,background-color] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 cursor-pointer"
             style={{
               borderColor: "var(--color-timber)",
               background: "color-mix(in srgb, white 50%, transparent)",

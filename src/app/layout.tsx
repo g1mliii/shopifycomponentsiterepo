@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Fraunces, Nunito } from "next/font/google";
 import "./globals.css";
 
 import {
@@ -14,6 +15,18 @@ import {
 } from "@/lib/seo/site";
 
 const twitterHandle = getTwitterHandle();
+const bodyFont = Nunito({
+  subsets: ["latin"],
+  variable: "--font-body",
+  weight: ["400", "500", "600", "700", "800"],
+  display: "swap",
+});
+const displayFont = Fraunces({
+  subsets: ["latin"],
+  variable: "--font-display",
+  weight: ["600", "700", "800"],
+  display: "swap",
+});
 
 const siteVerification: Metadata["verification"] | undefined = (() => {
   const google = process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION?.trim();
@@ -117,7 +130,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className="antialiased">{children}</body>
+      <body className={`${bodyFont.variable} ${displayFont.variable} antialiased`}>{children}</body>
     </html>
   );
 }

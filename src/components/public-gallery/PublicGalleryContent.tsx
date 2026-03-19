@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import type { CSSProperties } from "react";
 import { useSearchParams } from "next/navigation";
 
 import { parsePublicComponentsQuery } from "@/lib/components/public-query-params";
@@ -95,6 +97,7 @@ export function PublicGalleryContent({
   const [activeQueryKey, setActiveQueryKey] = useState(initialLoadErrorMessage ? "" : initialQueryKey);
   const [loadErrorMessage, setLoadErrorMessage] = useState<string | null>(initialLoadErrorMessage);
   const [isLoading, setIsLoading] = useState(false);
+  const clearFiltersHref = "/";
 
   useEffect(() => {
     if (currentQueryKey === activeQueryKey) {
@@ -192,16 +195,34 @@ export function PublicGalleryContent({
 
         {result.components.length === 0 ? (
           <div
-            className="p-6 text-sm"
+            className="p-6 sm:p-7"
             style={{
               borderRadius: "2rem",
               border: "1px solid color-mix(in srgb, var(--color-timber) 50%, transparent)",
               background: "var(--color-card)",
               boxShadow: "var(--shadow-moss)",
-              color: "var(--color-muted-fg)",
             }}
           >
-            No components matched your current filters.
+            <p className="page-eyebrow">No match yet</p>
+            <h2 className="font-display mt-2 text-2xl" style={{ color: "var(--foreground)" }}>
+              Nothing matched these filters.
+            </h2>
+            <p className="page-subtitle mt-3 max-w-xl">
+              Try a broader search, switch categories, or return to the full library to compare components side by side.
+            </p>
+            {(currentQuery.query || currentQuery.category) ? (
+              <Link
+                href={clearFiltersHref}
+                className="mt-5 inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition-[transform,background-color,color] duration-200 motion-safe:hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+                style={{
+                  background: "var(--color-moss)",
+                  color: "var(--color-moss-fg)",
+                  "--tw-ring-color": "color-mix(in srgb, var(--color-moss) 38%, transparent)",
+                } as CSSProperties}
+              >
+                Clear filters
+              </Link>
+            ) : null}
           </div>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

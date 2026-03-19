@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import type { CSSProperties } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -38,18 +39,22 @@ export default async function AdminUploadPage() {
 
     if (adminResult.status === 403) {
       return (
-        <main className="mx-auto flex min-h-dvh w-full max-w-5xl items-center justify-center px-6 py-12">
-          <section className="w-full max-w-lg rounded-2xl border border-amber-300 bg-amber-50 p-8">
-            <h1 className="text-2xl font-semibold tracking-tight text-amber-900">
+        <main className="admin-shell mx-auto flex min-h-dvh w-full max-w-6xl items-center justify-center px-5 py-12 sm:px-6">
+          <section className="admin-surface w-full max-w-lg p-8 sm:p-10">
+            <p className="admin-kicker mb-2">Admin Access</p>
+            <h1 className="admin-title text-3xl">
               Admin Access Required
             </h1>
-            <p className="mt-2 text-sm text-amber-800">
+            <p className="admin-muted mt-3 text-sm leading-relaxed">
               Your account is authenticated but not assigned in{" "}
-              <code className="rounded bg-amber-100 px-1 py-0.5">public.admin_users</code>.
+              <code className="rounded bg-[color:var(--color-stone)] px-1.5 py-0.5 text-[color:var(--color-bark)]">public.admin_users</code>.
             </p>
             <Link
               href="/admin/login"
-              className="mt-4 inline-flex rounded-lg border border-amber-700 px-3 py-2 text-sm font-medium text-amber-900 transition-transform duration-150 motion-reduce:transition-none motion-safe:hover:will-change-transform motion-safe:hover:transform-gpu motion-safe:hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2"
+              className="admin-btn admin-btn-secondary mt-5 transition-transform duration-150 motion-reduce:transition-none motion-safe:hover:will-change-transform motion-safe:hover:transform-gpu motion-safe:hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+              style={{
+                "--tw-ring-color": "color-mix(in srgb, var(--color-moss) 36%, transparent)",
+              } as CSSProperties}
             >
               Sign in with another account
             </Link>
@@ -59,12 +64,13 @@ export default async function AdminUploadPage() {
     }
 
     return (
-      <main className="mx-auto flex min-h-dvh w-full max-w-5xl items-center justify-center px-6 py-12">
-        <section className="w-full max-w-lg rounded-2xl border border-red-300 bg-red-50 p-8">
-          <h1 className="text-2xl font-semibold tracking-tight text-red-900">
+      <main className="admin-shell mx-auto flex min-h-dvh w-full max-w-6xl items-center justify-center px-5 py-12 sm:px-6">
+        <section className="admin-surface w-full max-w-lg p-8 sm:p-10">
+          <p className="admin-kicker mb-2">Admin Access</p>
+          <h1 className="admin-title text-3xl">
             Session Verification Failed
           </h1>
-          <p className="mt-2 text-sm text-red-800">{adminResult.message}</p>
+          <p className="admin-status admin-status-error mt-4 text-sm">{adminResult.message}</p>
         </section>
       </main>
     );
@@ -77,17 +83,18 @@ export default async function AdminUploadPage() {
     .limit(ADMIN_COMPONENT_LIST_LIMIT);
 
   return (
-    <main className="mx-auto min-h-dvh w-full max-w-none px-4 py-8 sm:px-6 lg:px-8">
-      <section className="rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm">
-        <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">Component Admin Panel</h1>
-        <p className="mt-2 text-sm text-zinc-600">
+    <main className="admin-shell mx-auto min-h-dvh w-full max-w-none px-4 py-8 sm:px-6 lg:px-8">
+      <section className="admin-surface p-6 sm:p-8">
+        <p className="admin-kicker mb-2">Admin Workspace</p>
+        <h1 className="admin-title text-3xl sm:text-4xl">Component Admin Panel</h1>
+        <p className="admin-muted mt-3 max-w-2xl text-sm leading-relaxed">
           Signed in as <span className="font-medium">{adminResult.user.email ?? adminResult.user.id}</span>
         </p>
         {initialComponentsError ? (
           <div
             role="status"
             aria-live="polite"
-            className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800"
+            className="admin-status admin-status-warn mt-5 text-sm"
           >
             Existing components could not be preloaded. Use <span className="font-medium">Refresh List</span>{" "}
             below after the page loads.

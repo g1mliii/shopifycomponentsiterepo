@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 
 import { createBrowserSupabaseClient } from "@/lib/supabase/browser";
@@ -84,7 +85,7 @@ export function LoginForm({ nextPathParam = null }: LoginFormProps) {
   return (
     <form onSubmit={onSubmit} className="mt-6 space-y-4">
       <div>
-        <label htmlFor="email" className="block text-sm font-medium text-zinc-800">
+        <label htmlFor="email" className="admin-label">
           Email
         </label>
         <input
@@ -95,11 +96,11 @@ export function LoginForm({ nextPathParam = null }: LoginFormProps) {
           autoComplete="email"
           inputMode="email"
           spellCheck={false}
-          className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 transition-colors focus-visible:border-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 focus-visible:ring-offset-2"
+          className="admin-input mt-2"
         />
       </div>
       <div>
-        <label htmlFor="password" className="block text-sm font-medium text-zinc-800">
+        <label htmlFor="password" className="admin-label">
           Password
         </label>
         <input
@@ -108,14 +109,14 @@ export function LoginForm({ nextPathParam = null }: LoginFormProps) {
           type="password"
           required
           autoComplete="current-password"
-          className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 transition-colors focus-visible:border-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 focus-visible:ring-offset-2"
+          className="admin-input mt-2"
         />
       </div>
       {errorMessage ? (
         <p
           role="status"
           aria-live="polite"
-          className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+          className="admin-status admin-status-error text-sm"
         >
           {errorMessage}
         </p>
@@ -123,7 +124,10 @@ export function LoginForm({ nextPathParam = null }: LoginFormProps) {
       <button
         type="submit"
         disabled={isSubmitting}
-        className="w-full touch-manipulation rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-transform duration-150 motion-reduce:transition-none motion-safe:hover:will-change-transform motion-safe:hover:transform-gpu motion-safe:hover:-translate-y-0.5 motion-safe:active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+        className="admin-btn admin-btn-primary w-full transition-transform duration-150 motion-reduce:transition-none motion-safe:hover:will-change-transform motion-safe:hover:transform-gpu motion-safe:hover:-translate-y-0.5 motion-safe:active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+        style={{
+          "--tw-ring-color": "color-mix(in srgb, var(--color-moss) 38%, transparent)",
+        } as CSSProperties}
       >
         {isSubmitting ? "Signing In…" : "Sign In"}
       </button>

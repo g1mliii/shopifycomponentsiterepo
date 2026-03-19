@@ -183,7 +183,7 @@ export function SandboxWorkspace({
                         <select
                           value={pendingBlockType}
                           onChange={(event) => onPendingBlockTypeChange(event.target.value)}
-                          className="sandbox-input sandbox-focus-ring h-9 min-w-[11rem] px-3 text-xs"
+                          className="sandbox-input sandbox-focus-ring h-11 min-w-[11rem] px-3 text-xs"
                         >
                           {schema.blocks.map((block) => (
                             <option key={block.type} value={block.type}>
@@ -195,7 +195,7 @@ export function SandboxWorkspace({
                           type="button"
                           disabled={!canAddSelectedBlock}
                           onClick={onAddBlock}
-                          className="sandbox-btn sandbox-btn-secondary sandbox-focus-ring h-9 px-3 text-xs"
+                          className="sandbox-btn sandbox-btn-secondary sandbox-focus-ring h-11 px-3 text-xs"
                         >
                           Add block
                         </button>
@@ -207,7 +207,7 @@ export function SandboxWorkspace({
                           type="button"
                           disabled={allBlocksCollapsed}
                           onClick={handleCollapseAllBlocks}
-                          className="sandbox-btn sandbox-btn-secondary sandbox-focus-ring h-9 px-3 text-xs"
+                          className="sandbox-btn sandbox-btn-secondary sandbox-focus-ring h-11 px-3 text-xs"
                         >
                           Collapse all
                         </button>
@@ -215,7 +215,7 @@ export function SandboxWorkspace({
                           type="button"
                           disabled={!hasCollapsedBlocks}
                           onClick={handleExpandAllBlocks}
-                          className="sandbox-btn sandbox-btn-secondary sandbox-focus-ring h-9 px-3 text-xs"
+                          className="sandbox-btn sandbox-btn-secondary sandbox-focus-ring h-11 px-3 text-xs"
                         >
                           Expand all
                         </button>
@@ -243,7 +243,7 @@ export function SandboxWorkspace({
                         <button
                           type="button"
                           onClick={() => handleToggleBlockCollapsed(block.id)}
-                          className="sandbox-btn sandbox-btn-secondary sandbox-focus-ring h-7 rounded-md px-2 text-[11px]"
+                          className="sandbox-btn sandbox-btn-secondary sandbox-focus-ring h-11 rounded-full px-3 text-xs"
                           aria-expanded={!isCollapsed}
                         >
                           {isCollapsed ? "Expand" : "Collapse"}
@@ -252,7 +252,7 @@ export function SandboxWorkspace({
                           type="button"
                           onClick={() => onMoveBlock(block.id, "up")}
                           disabled={index === 0}
-                          className="sandbox-btn sandbox-btn-secondary sandbox-focus-ring h-7 rounded-md px-2 text-[11px]"
+                          className="sandbox-btn sandbox-btn-secondary sandbox-focus-ring h-11 rounded-full px-3 text-xs"
                         >
                           Up
                         </button>
@@ -260,14 +260,14 @@ export function SandboxWorkspace({
                           type="button"
                           onClick={() => onMoveBlock(block.id, "down")}
                           disabled={index === editorState.blocks.length - 1}
-                          className="sandbox-btn sandbox-btn-secondary sandbox-focus-ring h-7 rounded-md px-2 text-[11px]"
+                          className="sandbox-btn sandbox-btn-secondary sandbox-focus-ring h-11 rounded-full px-3 text-xs"
                         >
                           Down
                         </button>
                         <button
                           type="button"
                           onClick={() => handleRemoveBlockClick(block.id)}
-                          className="sandbox-btn sandbox-btn-danger sandbox-focus-ring h-7 rounded-md px-2 text-[11px]"
+                          className="sandbox-btn sandbox-btn-danger sandbox-focus-ring h-11 rounded-full px-3 text-xs"
                         >
                           Delete
                         </button>

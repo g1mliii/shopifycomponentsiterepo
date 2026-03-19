@@ -42,11 +42,11 @@ export function PaginationControls({
   const nextHref = buildPageHref(basePath, page + 1, search, category);
 
   return (
-    <nav className="mt-6 flex items-center justify-between gap-3" aria-label="Pagination">
+    <nav className="mt-6 flex flex-wrap items-center justify-between gap-3" aria-label="Pagination">
       {canGoPrev ? (
         <Link
           href={prevHref}
-          className="inline-flex h-10 touch-manipulation items-center rounded-full border-2 px-6 text-sm font-semibold transition-[transform,background-color,border-color,color] duration-200 motion-safe:hover:-translate-y-0.5 motion-safe:active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+          className="inline-flex min-h-11 touch-manipulation items-center rounded-full border-2 px-6 text-sm font-semibold transition-[transform,background-color,border-color,color] duration-200 motion-safe:hover:-translate-y-0.5 motion-safe:active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
           style={{
             borderColor: "color-mix(in srgb, var(--color-bark) 48%, var(--color-timber))",
             background: "var(--color-card)",
@@ -59,7 +59,7 @@ export function PaginationControls({
         </Link>
       ) : (
         <span
-          className="inline-flex h-10 items-center rounded-full border px-6 text-sm"
+          className="inline-flex min-h-11 items-center rounded-full border px-6 text-sm"
           style={{
             borderColor: "color-mix(in srgb, var(--color-bark) 20%, var(--color-timber))",
             background: "var(--color-card)",
@@ -81,7 +81,7 @@ export function PaginationControls({
       {canGoNext ? (
         <Link
           href={nextHref}
-          className="inline-flex h-10 touch-manipulation items-center rounded-full px-6 text-sm font-semibold transition-[transform,background-color,color] duration-200 motion-safe:hover:-translate-y-0.5 motion-safe:active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+          className="inline-flex min-h-11 touch-manipulation items-center rounded-full px-6 text-sm font-semibold transition-[transform,background-color,color] duration-200 motion-safe:hover:-translate-y-0.5 motion-safe:active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
           style={{
             background: "var(--color-moss)",
             color: "var(--color-moss-fg)",
@@ -93,7 +93,7 @@ export function PaginationControls({
         </Link>
       ) : (
         <span
-          className="inline-flex h-10 items-center rounded-full border px-6 text-sm"
+          className="inline-flex min-h-11 items-center rounded-full border px-6 text-sm"
           style={{
             borderColor: "color-mix(in srgb, var(--color-bark) 20%, var(--color-timber))",
             background: "var(--color-card)",

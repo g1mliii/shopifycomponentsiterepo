@@ -4,7 +4,7 @@ import { NO_STORE_PRIVATE_CACHE_CONTROL, apiError } from "@/lib/api/errors";
 import { getComponentByIdWithFilePath, isValidComponentId } from "@/lib/components/component-by-id";
 import { getDownloadRateLimitKey } from "@/lib/rate-limit/download-key";
 import { consumeSharedRateLimit } from "@/lib/rate-limit/shared";
-import { createSignedStorageObjectUrl } from "@/lib/supabase/signed-storage-url";
+import { createSignedStorageObjectUrl, downloadStorageObjectText } from "@/lib/supabase/signed-storage-url";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 const LIQUID_ROUTE_RATE_LIMIT_MAX_ENTRIES = 2_000;
@@ -69,6 +69,33 @@ export async function GET(request: Request, context: RouteContext) {
       return apiError(404, "component_not_found", "Component not found.", requestId);
     }
 
+    if (isProxyModeRequest(request)) {
+      const { text: source, errorMessage: sourceErrorMessage } = await downloadStorageObjectText(
+        "liquid-files",
+        component.file_path,
+      );
+
+      if (!source) {
+        console.warn(
+          "[public-component-liquid] source_download_failed",
+          JSON.stringify({
+            requestId,
+            componentId: id,
+            reason: sourceErrorMessage ?? "storage_download_failed",
+          }),
+        );
+        return apiError(500, "liquid_lookup_failed", "Failed to read component Liquid source.", requestId);
+      }
+
+      return new NextResponse(source, {
+        status: 200,
+        headers: {
+          "Cache-Control": LIQUID_ROUTE_PROXY_SOURCE_CACHE_CONTROL,
+          "Content-Type": "text/plain; charset=utf-8",
+        },
+      });
+    }
+
     const { signedUrl, errorMessage } = await createSignedStorageObjectUrl(
       "liquid-files",
       component.file_path,
@@ -89,38 +116,10 @@ export async function GET(request: Request, context: RouteContext) {
       return apiError(500, "liquid_lookup_failed", "Failed to load component source.", requestId);
     }
 
-    if (!isProxyModeRequest(request)) {
-      return NextResponse.redirect(signedUrl, {
-        status: 307,
-        headers: {
-          "Cache-Control": LIQUID_ROUTE_REDIRECT_CACHE_CONTROL,
-        },
-      });
-    }
-
-    const sourceResponse = await fetch(signedUrl, {
-      cache: "no-store",
-    });
-
-    if (!sourceResponse.ok) {
-      console.warn(
-        "[public-component-liquid] source_download_failed",
-        JSON.stringify({
-          requestId,
-          componentId: id,
-          reason: `status_${sourceResponse.status}`,
-        }),
-      );
-      return apiError(500, "liquid_lookup_failed", "Failed to read component Liquid source.", requestId);
-    }
-
-    const source = await sourceResponse.text();
-
-    return new NextResponse(source, {
-      status: 200,
+    return NextResponse.redirect(signedUrl, {
+      status: 307,
       headers: {
-        "Cache-Control": LIQUID_ROUTE_PROXY_SOURCE_CACHE_CONTROL,
-        "Content-Type": "text/plain; charset=utf-8",
+        "Cache-Control": LIQUID_ROUTE_REDIRECT_CACHE_CONTROL,
       },
     });
   } catch (error) {

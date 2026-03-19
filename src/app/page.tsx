@@ -150,31 +150,26 @@ export default async function HomePage() {
         }}
       />
 
-      <header className="relative mb-6">
-        <p
-          className="mb-1 text-xs font-semibold uppercase tracking-[0.18em]"
-          style={{ color: "var(--color-clay)" }}
-        >
+      <header className="relative mb-8 max-w-3xl">
+        <p className="page-eyebrow mb-2">
           Component Library
         </p>
         <h1
-          className="text-3xl font-bold tracking-tight sm:text-4xl"
+          className="font-display max-w-2xl text-4xl sm:text-5xl"
           style={{ color: "var(--foreground)" }}
         >
-          Shopify Components
+          Shopify components you can judge in seconds.
         </h1>
         <p
-          className="mt-2 max-w-lg text-sm leading-relaxed"
-          style={{ color: "var(--color-muted-fg)" }}
+          className="page-subtitle mt-3 max-w-2xl"
         >
-          Browse production-ready Liquid blocks with fast previews and one-click downloads.
+          Browse production-ready Liquid blocks, check motion and layout with live previews, and open the sandbox when you need to tune defaults before download.
         </p>
-        {/* Decorative underline */}
-        <div
-          className="mt-4 h-px w-16 rounded-full"
-          style={{ background: "var(--color-moss)", opacity: 0.5 }}
-          aria-hidden="true"
-        />
+        <div className="mt-5 flex flex-wrap gap-2">
+          <span className="sandbox-badge">Live previews</span>
+          <span className="sandbox-badge">Sandbox editing</span>
+          <span className="sandbox-badge">Liquid downloads</span>
+        </div>
       </header>
 
       <PublicGalleryContent

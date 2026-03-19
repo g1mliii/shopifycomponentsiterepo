@@ -47,11 +47,12 @@ export default async function AdminLoginPage({
   }
 
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-5xl items-center justify-center px-6 py-12">
-      <section className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm">
-        <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">Admin Login</h1>
-        <p className="mt-2 text-sm text-zinc-600">
-          Sign in with your admin account to upload Shopify components.
+    <main className="admin-shell mx-auto flex min-h-dvh w-full max-w-6xl items-center justify-center px-5 py-12 sm:px-6">
+      <section className="admin-surface w-full max-w-xl p-8 sm:p-10">
+        <p className="admin-kicker mb-2">Admin Access</p>
+        <h1 className="admin-title text-3xl sm:text-4xl">Admin Login</h1>
+        <p className="admin-muted mt-3 max-w-md text-sm leading-relaxed">
+          Sign in to upload new Shopify components, maintain previews, and keep the library ready for fast campaign work.
         </p>
         <LoginForm nextPathParam={nextPathParam} />
       </section>

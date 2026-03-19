@@ -1168,7 +1168,7 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
     <form onSubmit={onSubmit} className="mt-6 space-y-5">
       <div className="grid gap-4 md:grid-cols-2">
         <div>
-          <label htmlFor="title" className="block text-sm font-medium text-zinc-800">
+          <label htmlFor="title" className="admin-label">
             Title
           </label>
           <input
@@ -1180,11 +1180,11 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
             autoComplete="off"
             value={titleValue}
             onChange={(event) => setTitleValue(event.currentTarget.value)}
-            className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 transition-colors focus-visible:border-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 focus-visible:ring-offset-2"
+            className="admin-input mt-2"
           />
         </div>
         <div>
-          <label htmlFor="category" className="block text-sm font-medium text-zinc-800">
+          <label htmlFor="category" className="admin-label">
             Category
           </label>
           <input
@@ -1196,13 +1196,13 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
             autoComplete="off"
             value={categoryValue}
             onChange={(event) => setCategoryValue(event.currentTarget.value)}
-            className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 transition-colors focus-visible:border-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 focus-visible:ring-offset-2"
+            className="admin-input mt-2"
           />
         </div>
       </div>
 
       <div>
-        <label htmlFor="thumbnail" className="block text-sm font-medium text-zinc-800">
+        <label htmlFor="thumbnail" className="admin-label">
           Thumbnail (image or video, optional)
         </label>
         <input
@@ -1212,19 +1212,19 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
           type="file"
           accept="image/png,image/jpeg,image/webp,image/gif,image/avif,video/mp4,video/webm"
           onChange={() => setThumbnailStatusMessage(null)}
-          className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-800 file:mr-4 file:rounded-md file:border-0 file:bg-zinc-100 file:px-3 file:py-2 file:text-sm file:font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 focus-visible:ring-offset-2"
+          className="admin-file-input mt-2"
         />
-        <p className="mt-1 text-xs text-zinc-500">
+        <p className="admin-muted mt-2 text-xs">
           You can skip this for now and add or replace the thumbnail later from Manage Components.
         </p>
-        <p className="mt-1 text-xs text-zinc-500">
+        <p className="admin-muted mt-1 text-xs">
           Video thumbnails are auto-compressed to a small gallery-card format that preserves the full frame.
         </p>
         {thumbnailStatusMessage ? (
           <div
             role="status"
             aria-live="polite"
-            className="mt-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800"
+            className="admin-status admin-status-info mt-2 text-xs"
           >
             {thumbnailStatusMessage}
           </div>
@@ -1232,7 +1232,7 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
       </div>
 
       <div>
-        <label htmlFor="liquidFile" className="block text-sm font-medium text-zinc-800">
+        <label htmlFor="liquidFile" className="admin-label">
           Liquid File (.liquid)
         </label>
         <input
@@ -1243,10 +1243,10 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
           required={!localLiquidSource}
           accept=".liquid,text/plain,text/x-liquid,application/octet-stream"
           onChange={handleLiquidFileChange}
-          className="mt-1 block w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-800 file:mr-4 file:rounded-md file:border-0 file:bg-zinc-100 file:px-3 file:py-2 file:text-sm file:font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300 focus-visible:ring-offset-2"
+          className="admin-file-input mt-2"
         />
         {localLiquidSource ? (
-          <p className="mt-1 text-xs text-zinc-500">
+          <p className="admin-muted mt-2 text-xs">
             Current draft source is loaded. Re-selecting the file is optional unless you want to replace it.
           </p>
         ) : null}
@@ -1254,7 +1254,7 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
           <div
             role="status"
             aria-live="polite"
-            className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700"
+            className="admin-status admin-status-error mt-3 text-xs"
           >
             <p className="font-medium">Fix Liquid file issues before uploading.</p>
             <p className="mt-1">{uploadBlockingMessage}</p>
@@ -1272,7 +1272,7 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
           <div
             role="status"
             aria-live="polite"
-            className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800"
+            className="admin-status admin-status-warn mt-3 text-xs"
           >
             <p className="font-medium">Review Liquid file suggestions.</p>
             <p className="mt-1">{uploadSuggestionMessage}</p>
@@ -1288,26 +1288,29 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
         ) : null}
       </div>
 
-      <section className="rounded-lg border border-zinc-200 bg-zinc-50 p-4">
+      <section className="admin-surface-soft p-5 sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold tracking-tight text-zinc-900">
-            Split-View Liquid Editor
-          </h2>
-          <span className="rounded-full border border-zinc-300 px-2 py-0.5 text-xs font-medium text-zinc-600">
+          <div>
+            <p className="admin-kicker mb-2">Editor</p>
+            <h2 className="admin-title text-2xl">
+              Split-View Liquid Editor
+            </h2>
+          </div>
+          <span className="admin-chip">
             Optional
           </span>
         </div>
-        <p className="mt-2 text-xs text-zinc-600">
+        <p className="admin-muted mt-3 text-sm leading-relaxed">
           Reuses the same schema settings + block controls as sandbox. Configure the component visually here so the
           saved Liquid file includes the right defaults and block count.
         </p>
-        <p className="mt-2 text-xs text-zinc-500">
+        <p className="admin-muted mt-2 text-xs">
           Upload draft settings are saved in this browser. Thumbnail and local preview files still need re-selection
           after a refresh.
         </p>
 
         {localLiquidFileName ? (
-          <p className="mt-3 text-xs text-zinc-500">
+          <p className="admin-muted mt-3 text-xs">
             Loaded file: <span className="font-medium">{localLiquidFileName}</span>
           </p>
         ) : null}
@@ -1316,14 +1319,14 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
           <div
             role="status"
             aria-live="polite"
-            className="mt-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800"
+            className="admin-status admin-status-info mt-3 text-xs"
           >
             {draftStatusMessage}
           </div>
         ) : null}
 
         <div className="mt-3 flex flex-wrap gap-2">
-          <span className="inline-flex items-center rounded-full border border-zinc-300 bg-white px-2.5 py-1 text-xs text-zinc-600">
+          <span className="admin-chip">
             {isRenderingPreview ? "Preview rendering…" : "Preview ready"}
           </span>
         </div>
@@ -1332,21 +1335,28 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
           <div
             role="status"
             aria-live="polite"
-            className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800"
+            className="admin-status admin-status-warn mt-3 text-xs"
           >
             {previewError}
           </div>
         ) : null}
 
         {!localLiquidSource ? (
-          <div className="mt-3 flex h-44 items-center justify-center rounded-lg border border-zinc-200 bg-white px-4 text-center text-xs text-zinc-500">
-            {PREVIEW_PLACEHOLDER_TEXT}
+          <div className="admin-empty mt-4 flex h-48 items-center justify-center px-5 text-center">
+            <div>
+              <p className="font-display text-2xl" style={{ color: "var(--foreground)" }}>
+                Preview workspace is waiting on a Liquid file.
+              </p>
+              <p className="admin-muted mt-2 text-sm">
+                {PREVIEW_PLACEHOLDER_TEXT}
+              </p>
+            </div>
           </div>
         ) : !schema || !editorState ? (
           <div
             role="status"
             aria-live="polite"
-            className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800"
+            className="admin-status admin-status-warn mt-3 text-xs"
           >
             {previewError ?? "Liquid schema parsing failed."}
           </div>
@@ -1386,11 +1396,11 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
         <div
           role="status"
           aria-live="polite"
-          className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+          className="admin-status admin-status-error text-sm"
         >
           <p>{errorMessage}</p>
           {requestId ? (
-            <p className="mt-1 text-xs text-red-600">
+            <p className="mt-1 text-xs">
               Request ID: <code>{requestId}</code>
             </p>
           ) : null}
@@ -1401,7 +1411,7 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
         <div
           role="status"
           aria-live="polite"
-          className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800"
+          className="admin-status admin-status-success text-sm"
         >
           <p className="font-medium">Upload succeeded: {uploadedComponent.title}</p>
           {uploadedComponent.thumbnail_path ? null : (
@@ -1421,7 +1431,10 @@ export function UploadForm({ onUploaded }: UploadFormProps) {
       <button
         type="submit"
         disabled={isSubmitting || isPreparingThumbnail || hasUploadBlockingDiagnostics}
-        className="touch-manipulation rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-transform duration-150 motion-reduce:transition-none motion-safe:hover:will-change-transform motion-safe:hover:transform-gpu motion-safe:hover:-translate-y-0.5 motion-safe:active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+        className="admin-btn admin-btn-primary min-w-[12rem] transition-transform duration-150 motion-reduce:transition-none motion-safe:hover:will-change-transform motion-safe:hover:transform-gpu motion-safe:hover:-translate-y-0.5 motion-safe:active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+        style={{
+          "--tw-ring-color": "color-mix(in srgb, var(--color-moss) 38%, transparent)",
+        } as CSSProperties}
       >
         {hasUploadBlockingDiagnostics
           ? "Fix Liquid File Issues"

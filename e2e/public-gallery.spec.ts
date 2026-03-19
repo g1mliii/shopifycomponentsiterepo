@@ -35,7 +35,7 @@ test("public gallery shell renders and starter content is removed", async ({ pag
   await expect(page.locator('[data-testid="public-component-card"]')).toHaveCount(12);
 });
 
-test("video thumbnails stay fitted and only activate on hover", async ({ page }) => {
+test("video thumbnails stay fitted and support explicit preview controls", async ({ page }) => {
   if (!fixtures) {
     return;
   }
@@ -51,10 +51,12 @@ test("video thumbnails stay fitted and only activate on hover", async ({ page })
 
   const secondaryCard = page.locator('[data-testid="public-component-card"]').nth(1);
   const videoMedia = videoCard.getByTestId("public-thumbnail-media");
+  const previewToggle = videoCard.getByTestId("thumbnail-preview-toggle");
 
   await expect(videoCard).toBeVisible();
   await expect(videoCard.locator("video")).toHaveCount(0);
   await expect(videoMedia).toHaveAttribute("data-video-hovered", "false");
+  await expect(previewToggle).toBeVisible();
 
   await videoMedia.hover();
   await expect(videoMedia).toHaveAttribute("data-video-hovered", "true");
@@ -91,6 +93,14 @@ test("video thumbnails stay fitted and only activate on hover", async ({ page })
 
   await secondaryCard.getByTestId("public-thumbnail-media").hover();
   await page.getByRole("heading", { name: /shopify components/i }).hover();
+
+  await previewToggle.click();
+  await expect(videoMedia).toHaveAttribute("data-video-hovered", "true");
+  await expect(previewToggle).toHaveAttribute("aria-pressed", "true");
+  await expect(videoCard.locator("video")).toHaveCount(1);
+
+  await previewToggle.click();
+  await expect(previewToggle).toHaveAttribute("aria-pressed", "false");
   await expect(videoMedia).toHaveAttribute("data-video-hovered", "false");
   await expect(videoCard.locator("video")).toHaveCount(0);
 });
@@ -135,15 +145,16 @@ test("download endpoint returns redirect and applies rate limit", async ({ reque
     return;
   }
 
-  const ipNonce = Math.floor(Date.now() % 200);
-  const successIp = `198.51.${ipNonce}.120`;
-  const rateLimitedIp = `198.51.${ipNonce}.121`;
+  const ipNonceA = Math.floor(Math.random() * 200);
+  const ipNonceB = Math.floor(Math.random() * 200);
+  const successIp = `198.51.${ipNonceA}.${50 + Math.floor(Math.random() * 150)}`;
+  const rateLimitedIp = `198.51.${ipNonceB}.${50 + Math.floor(Math.random() * 150)}`;
 
   const successResponse = await request.get(
     `/api/components/${encodeURIComponent(fixtures.firstComponentId)}/download`,
     {
       headers: {
-        "x-forwarded-for": successIp,
+        "cf-connecting-ip": successIp,
       },
       maxRedirects: 0,
     },
@@ -155,7 +166,7 @@ test("download endpoint returns redirect and applies rate limit", async ({ reque
   for (let attempt = 0; attempt < 20; attempt += 1) {
     await request.get(`/api/components/${encodeURIComponent(fixtures.firstComponentId)}/download`, {
       headers: {
-        "x-forwarded-for": rateLimitedIp,
+        "cf-connecting-ip": rateLimitedIp,
       },
       maxRedirects: 0,
     });
@@ -165,7 +176,7 @@ test("download endpoint returns redirect and applies rate limit", async ({ reque
     `/api/components/${encodeURIComponent(fixtures.firstComponentId)}/download`,
     {
       headers: {
-        "x-forwarded-for": rateLimitedIp,
+        "cf-connecting-ip": rateLimitedIp,
       },
       maxRedirects: 0,
     },

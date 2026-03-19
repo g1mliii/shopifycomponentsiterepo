@@ -13,7 +13,7 @@ test("buildPreviewDocument includes restrictive CSP meta for sandbox previews", 
   assert.match(document, /frame-src 'none'/);
   assert.match(document, /worker-src 'none'/);
   assert.match(document, /child-src 'none'/);
-  assert.match(document, /navigate-to 'none'/);
-  assert.match(document, /frame-ancestors 'none'/);
+  assert.match(document, /object-src 'none'/);
+  assert.match(document, /base-uri 'none'/);
   assert.match(document, /form-action 'none'/);
 });

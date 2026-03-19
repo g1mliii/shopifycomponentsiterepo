@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useCallback, useRef, useState } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 
 import type { PublicComponentMediaKind } from "@/lib/components/public-types";
 
@@ -35,12 +36,13 @@ type ThumbnailMediaProps = {
 export function ThumbnailMedia({ alt, src, mediaKind, imageLoading = "lazy" }: ThumbnailMediaProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [isVideoHovered, setIsVideoHovered] = useState(false);
+  const [isVideoPinned, setIsVideoPinned] = useState(false);
   const [failedImageSrc, setFailedImageSrc] = useState<string | null>(null);
   const normalizedSrc = src?.trim() ?? "";
   const hasSource = normalizedSrc.length > 0;
   const imageFailed =
     mediaKind === "image" && hasSource && (failedImageSrc === normalizedSrc || failedImageSrcs.has(normalizedSrc));
-  const shouldRenderVideoPreview = mediaKind === "video" && isVideoHovered;
+  const shouldRenderVideoPreview = mediaKind === "video" && (isVideoHovered || isVideoPinned);
 
   const playVideoPreview = useCallback(() => {
     const video = videoRef.current;
@@ -85,13 +87,47 @@ export function ThumbnailMedia({ alt, src, mediaKind, imageLoading = "lazy" }: T
     }
 
     setIsVideoHovered(false);
+    if (isVideoPinned) {
+      return;
+    }
+
     pauseAndResetVideoPreview();
-  }, [mediaKind, pauseAndResetVideoPreview]);
+  }, [isVideoPinned, mediaKind, pauseAndResetVideoPreview]);
+
+  const handleVideoPreviewToggle = useCallback(() => {
+    if (mediaKind !== "video") {
+      return;
+    }
+
+    setIsVideoPinned((current) => {
+      const next = !current;
+      if (next) {
+        setIsVideoHovered(false);
+        window.setTimeout(() => {
+          playVideoPreview();
+        }, 0);
+      } else {
+        setIsVideoHovered(false);
+        pauseAndResetVideoPreview();
+      }
+
+      return next;
+    });
+  }, [mediaKind, pauseAndResetVideoPreview, playVideoPreview]);
+
+  const handleVideoPreviewKeyDown = useCallback((event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+
+    event.preventDefault();
+    handleVideoPreviewToggle();
+  }, [handleVideoPreviewToggle]);
 
   return (
     <div
       data-testid="public-thumbnail-media"
-      data-video-hovered={mediaKind === "video" ? String(isVideoHovered) : undefined}
+      data-video-hovered={mediaKind === "video" ? String(isVideoHovered || isVideoPinned) : undefined}
       className="relative aspect-[4/3] w-full overflow-hidden rounded-xl"
       style={{
         contain: "layout paint style",
@@ -113,7 +149,6 @@ export function ThumbnailMedia({ alt, src, mediaKind, imageLoading = "lazy" }: T
           src={normalizedSrc}
           alt={alt}
           fill
-          unoptimized
           sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
           loading={imageLoading}
           className="h-full w-full object-cover"
@@ -147,10 +182,30 @@ export function ThumbnailMedia({ alt, src, mediaKind, imageLoading = "lazy" }: T
             className="flex h-full w-full items-center justify-center text-xs font-medium uppercase tracking-wide"
             style={{ color: "var(--color-muted-fg)" }}
           >
-            Hover to preview
+            Preview available
           </div>
         )
       )}
+
+      {mediaKind === "video" && hasSource ? (
+        <button
+          type="button"
+          data-testid="thumbnail-preview-toggle"
+          aria-label={shouldRenderVideoPreview ? "Pause video preview" : "Preview video"}
+          aria-pressed={shouldRenderVideoPreview}
+          onClick={handleVideoPreviewToggle}
+          onKeyDown={handleVideoPreviewKeyDown}
+          className="absolute right-3 bottom-3 inline-flex min-h-11 items-center justify-center rounded-full border px-4 text-sm font-semibold transition-[transform,background-color,border-color,color] duration-200 motion-safe:hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+          style={{
+            borderColor: "color-mix(in srgb, var(--color-bark) 24%, var(--color-timber))",
+            background: "color-mix(in srgb, var(--color-card) 86%, white)",
+            color: "var(--foreground)",
+            "--tw-ring-color": "color-mix(in srgb, var(--color-moss) 38%, transparent)",
+          } as React.CSSProperties}
+        >
+          {shouldRenderVideoPreview ? "Pause preview" : "Preview video"}
+        </button>
+      ) : null}
     </div>
   );
 }

@@ -31,7 +31,7 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: process.cwd(),
   },
-  allowedDevOrigins: ["http://127.0.0.1:3000", "http://localhost:3000"],
+  allowedDevOrigins: ["127.0.0.1", "localhost"],
   images: {
     remotePatterns: [
       { protocol: "https", hostname: "**.supabase.co" },
