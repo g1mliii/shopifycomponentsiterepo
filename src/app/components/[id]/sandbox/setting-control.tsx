@@ -235,7 +235,11 @@ const SimulatedResourceEditor = memo(function SimulatedResourceEditor({
       </label>
       <input
         id={`${pathKey}:url`}
-        type="url"
+        type="text"
+        inputMode="url"
+        autoCapitalize="off"
+        autoCorrect="off"
+        spellCheck={false}
         value={normalized.url}
         placeholder="https://example.test/resource"
         onChange={(event) => apply({ url: event.target.value })}
@@ -705,6 +709,10 @@ export const SettingControl = memo(function SettingControl({
         <input
           id={pathKey}
           type={control.inputType}
+          inputMode={control.kind === "url" ? "url" : undefined}
+          autoCapitalize={control.kind === "url" ? "off" : undefined}
+          autoCorrect={control.kind === "url" ? "off" : undefined}
+          spellCheck={control.kind === "url" ? false : undefined}
           value={toInputValue(value)}
           placeholder={setting.placeholder ?? ""}
           onChange={(event) => onChange(pathKey, event.target.value)}

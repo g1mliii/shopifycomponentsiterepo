@@ -90,3 +90,15 @@ test("generic text settings do not expose local file preview input", () => {
   assert.equal(spec.kind, "text");
   assert.equal(spec.supportsLocalFilePreview, false);
 });
+
+test("shopify url settings use text-style input so relative theme paths remain valid", () => {
+  const setting = createSetting({
+    id: "button_link",
+    type: "url",
+    label: "Button Link",
+  });
+
+  const spec = getSettingControlSpec(setting);
+  assert.equal(spec.kind, "url");
+  assert.equal(spec.inputType, "text");
+});

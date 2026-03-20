@@ -192,7 +192,7 @@ export function getSettingControlSpec(setting: LiquidSchemaSetting): LiquidContr
   if (URL_TYPES.has(type)) {
     return {
       kind: "url",
-      inputType: "url",
+      inputType: "text",
       simulated: setting.support === "simulated",
       unknown: setting.support === "unknown",
       supportsLocalFilePreview: LOCAL_FILE_PREVIEW_TYPES.has(type),
@@ -212,7 +212,7 @@ export function getSettingControlSpec(setting: LiquidSchemaSetting): LiquidContr
   if (type === "image_picker") {
     return {
       kind: "url",
-      inputType: "url",
+      inputType: "text",
       simulated: false,
       unknown: false,
       supportsLocalFilePreview: true,
