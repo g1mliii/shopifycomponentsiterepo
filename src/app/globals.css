@@ -306,7 +306,7 @@ body {
   align-items: center;
   justify-content: center;
   min-height: 2.75rem;
-  border-radius: 9999px;
+  border-radius: 2px;
   border: 1px solid transparent;
   padding: 0.7rem 1rem;
   font-size: 0.875rem;

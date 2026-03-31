@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "security:deps": "node scripts/check-dependency-policy.mjs",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "node --test --experimental-strip-types",
@@ -14,8 +15,8 @@
   "dependencies": {
     "@supabase/ssr": "^0.9.0",
     "@supabase/supabase-js": "^2.98.0",
-    "liquidjs": "^10.24.0",
-    "next": "16.1.6",
+    "liquidjs": "^10.25.2",
+    "next": "16.2.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "zod": "^4.3.6"
@@ -27,8 +28,15 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.1.6",
+    "eslint-config-next": "16.2.1",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "pnpm": {
+    "overrides": {
+      "axios@1.14.1": "npm:axios@1.14.0",
+      "axios@0.30.4": "npm:axios@0.30.3",
+      "plain-crypto-js@4.2.1": "npm:plain-crypto-js@0.0.1-security.0"
+    }
   }
 }

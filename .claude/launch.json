@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Next.js Dev Server",
+      "runtimeExecutable": "C:\\Program Files\\nodejs\\node.exe",
+      "runtimeArgs": ["node_modules/.pnpm/next@16.1.6_@babel+core@7.2_9ef754802ce6c6af4832ab3d415015e1/node_modules/next/dist/bin/next", "dev"],
+      "port": 3000
+    }
+  ]
+}

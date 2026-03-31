@@ -1,6 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-const PREVIEW_DOCUMENT_SCRIPT_SHA256 = "'sha256-txstEqeFdEQHQn1RNH6gl5mvAE7O6JEf8STyp2aTxlU='";
 const PREVIEW_SAMPLE_MEDIA_ORIGIN = "https://interactive-examples.mdn.mozilla.net";
 
 function getSupabaseOrigin(): string | null {
@@ -26,7 +25,7 @@ function createNonce(): string {
   return btoa(binary);
 }
 
-function buildCspValue(nonce: string, options?: { includeUnsafeEval?: boolean }): string {
+function buildCspValue(options?: { includeUnsafeEval?: boolean }): string {
   const connectSources = new Set(["'self'", "https://*.supabase.co", "wss://*.supabase.co"]);
   const imgSources = new Set(["'self'", "data:", "blob:", "https://*.supabase.co"]);
   const mediaSources = new Set(["'self'", "data:", "blob:", "https://*.supabase.co"]);
@@ -40,7 +39,10 @@ function buildCspValue(nonce: string, options?: { includeUnsafeEval?: boolean })
 
   mediaSources.add(PREVIEW_SAMPLE_MEDIA_ORIGIN);
 
-  const scriptSources = ["'self'", `'nonce-${nonce}'`, "'strict-dynamic'", PREVIEW_DOCUMENT_SCRIPT_SHA256];
+  // Static/ISR App Router pages cannot receive per-request nonces on Next runtime scripts,
+  // so the outer document CSP must stay compatible with self-hosted bundles and inline
+  // framework payloads. Preview iframe documents keep their own dedicated CSP.
+  const scriptSources = ["'self'", "'unsafe-inline'"];
   if (options?.includeUnsafeEval) {
     scriptSources.push("'unsafe-eval'");
   }
@@ -56,6 +58,7 @@ function buildCspValue(nonce: string, options?: { includeUnsafeEval?: boolean })
     "font-src 'self' data:",
     "style-src 'self' 'unsafe-inline'",
     "script-src " + scriptSources.join(" "),
+    "script-src-attr 'none'",
     "connect-src " + Array.from(connectSources).join(" "),
     "worker-src 'self' blob:",
   ].join("; ");
@@ -82,7 +85,7 @@ export function proxy(request: NextRequest) {
 
   const isProduction = process.env.NODE_ENV === "production";
   const nonce = createNonce();
-  const csp = buildCspValue(nonce, {
+  const csp = buildCspValue({
     includeUnsafeEval: !isProduction,
   });
 
