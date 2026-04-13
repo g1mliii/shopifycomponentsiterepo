@@ -35,6 +35,7 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 *.log
+.playwright-cli/
 
 # env files (can opt-in for committing if needed)
 .env*
@@ -60,3 +61,4 @@ tasks/lessons.md
 # Agent and local plan docs
 AGENTS.md
 PLAN.md
+.claude/
