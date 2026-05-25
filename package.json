@@ -37,7 +37,8 @@
       "axios@1.14.1": "npm:axios@1.14.0",
       "axios@0.30.4": "npm:axios@0.30.3",
       "plain-crypto-js@4.2.1": "npm:plain-crypto-js@0.0.1-security.0",
-      "postcss": "8.5.12"
+      "postcss": "8.5.12",
+      "ws@>=8.0.0 <8.20.1": ">=8.20.1"
     }
   }
 }
