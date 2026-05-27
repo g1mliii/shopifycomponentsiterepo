@@ -39,14 +39,21 @@ type ExtractedPreviewScripts = {
 
 function extractInlinePreviewScripts(html: string): ExtractedPreviewScripts {
   const inlineScripts: string[] = [];
-  const htmlWithoutScripts = html.replace(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi, (_match, attributes: string, code: string) => {
-    if (/\bsrc\s*=/.test(attributes)) {
-      return "";
-    }
+  const scriptPattern = /<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi;
 
-    inlineScripts.push(code);
-    return "";
-  });
+  let htmlWithoutScripts = html;
+  let previous: string;
+  do {
+    previous = htmlWithoutScripts;
+    htmlWithoutScripts = htmlWithoutScripts.replace(scriptPattern, (_match, attributes: string, code: string) => {
+      if (/\bsrc\s*=/.test(attributes)) {
+        return "";
+      }
+
+      inlineScripts.push(code);
+      return "";
+    });
+  } while (htmlWithoutScripts !== previous);
 
   return {
     htmlWithoutScripts,

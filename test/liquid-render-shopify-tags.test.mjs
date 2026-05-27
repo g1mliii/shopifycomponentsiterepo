@@ -34,7 +34,7 @@ test("renderLiquidPreview supports Shopify style/javascript block tags", async (
   assert.match(result.html, /Shopify Theme Tag Support/);
   assert.match(result.html, /<style>/);
   assert.match(result.html, /\.hero\s*\{\s*color:\s*#111111;/);
-  assert.match(result.html, /<script>/);
+  assert.match(result.html, /<script\b[^>]*>/i);
   assert.match(result.html, /window\.__preview_tag_test = true/);
 });
 
