@@ -34,6 +34,7 @@
   },
   "pnpm": {
     "overrides": {
+      "@babel/core": "7.29.6",
       "axios@1.14.1": "npm:axios@1.14.0",
       "axios@0.30.4": "npm:axios@0.30.3",
       "plain-crypto-js@4.2.1": "npm:plain-crypto-js@0.0.1-security.0",
